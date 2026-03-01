@@ -28,7 +28,7 @@ const CARGO_ROLE_MAP = { '1': 'Presidente', '3': 'Governador', '5': 'Senador', '
 const proxyImage = (url) => {
   if (!url) return null
   if (url.includes('wsrv.nl')) return url
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&default=identicon`
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}`
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

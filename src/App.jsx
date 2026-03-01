@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Search, ShieldAlert, CheckCircle,
   ExternalLink, X, User, Loader2,
-  Trophy, Share2, ZoomIn, Scale
+  Trophy, Share2, ZoomIn, Scale,
+  ChevronUp, ChevronDown
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { toPng } from 'html-to-image'
@@ -19,7 +20,7 @@ const roleLabels = {
 const proxyImage = (url) => {
   if (!url) return null
   if (url.includes('wsrv.nl')) return url
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&default=identicon`
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}`
 }
 
 export default function App() {
