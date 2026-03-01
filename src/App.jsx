@@ -164,9 +164,13 @@ export default function App() {
 
       {/* BRANDING */}
       <nav className="p-6 text-center bg-black/80 border-b border-white/5 backdrop-blur-xl sticky top-0 z-50">
-        <div className="flex items-center justify-center gap-2 cursor-pointer select-none" onClick={handleLogoClick}>
-          <Trophy className="text-indigo-500" size={24} />
-          <h1 className="text-2xl font-black text-white italic tracking-tighter">CORRUPTÔMETRO</h1>
+        <div className="flex items-center justify-center gap-3 cursor-pointer select-none group" onClick={handleLogoClick}>
+          <div className="relative">
+            <Trophy className="text-indigo-500 group-hover:scale-110 transition-transform" size={24} />
+            <div className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-ping" />
+          </div>
+          <h1 className="text-2xl font-black text-white italic tracking-tighter group-hover:text-indigo-400 transition-colors">CORRUPTÔMETRO</h1>
+          <div className="px-1.5 py-0.5 rounded-[4px] bg-rose-500/10 border border-rose-500/20 text-[7px] font-black text-rose-500 uppercase tracking-widest ml-1">LIVE</div>
         </div>
       </nav>
 
