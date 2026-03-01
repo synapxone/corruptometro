@@ -20,7 +20,13 @@ const roleLabels = {
 const proxyImage = (url) => {
   if (!url) return null
   if (url.includes('wsrv.nl')) return url
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&default=identicon`
+  try {
+    // Normaliza para evitar double-encoding (ex: %25C3%25A1 em vez de %C3%A1)
+    const normalized = decodeURIComponent(url)
+    return `https://wsrv.nl/?url=${encodeURIComponent(normalized)}`
+  } catch (e) {
+    return `https://wsrv.nl/?url=${encodeURIComponent(url)}`
+  }
 }
 
 export default function App() {
@@ -36,6 +42,7 @@ export default function App() {
   const [isSearching, setIsSearching] = useState(false)
   const [filterState, setFilterState] = useState('')
   const [showColinha, setShowColinha] = useState(false)
+  const [activeTab, setActiveTab] = useState('lawsuits')
   const [scanLogs, setScanLogs] = useState([])
 
   // Modal display states
@@ -55,6 +62,15 @@ export default function App() {
       presidente: null, governador: null, senador1: null, senador2: null, depFederal: null, depEstadual: null
     }
   })
+
+  useEffect(() => {
+    if (selectedPolitician && !loadingScandals) {
+      if (lawsuits.length > 0) setActiveTab('lawsuits')
+      else if (scandals.some(s => s.is_positive && !s.title.startsWith('VOTAÇÃO:'))) setActiveTab('projects')
+      else if (scandals.some(s => s.is_positive && s.title.startsWith('VOTAÇÃO:'))) setActiveTab('votes')
+      else setActiveTab('noticias')
+    }
+  }, [selectedPolitician, loadingScandals, lawsuits.length, scandals.length])
 
   // Persistence: Save to localStorage on change
   useEffect(() => {
@@ -164,12 +180,24 @@ export default function App() {
       setLoadingScandals(true)
       setScandals([])
       setLawsuits([])
-      const [scans, laws] = await Promise.all([
-        supabase.from('scandals').select('*').eq('politician_id', selectedPolitician.id).order('date_occurrence', { ascending: false }),
-        supabase.from('lawsuits').select('*').eq('politician_id', selectedPolitician.id).order('created_at', { ascending: false })
-      ])
-      if (scans.data) setScandals(scans.data)
-      if (laws.data) setLawsuits(laws.data)
+
+      const { data: scans, error: scansError } = await supabase
+        .from('scandals')
+        .select('*')
+        .eq('politician_id', selectedPolitician.id)
+        .order('date_occurrence', { ascending: false })
+
+      const { data: laws, error: lawsError } = await supabase
+        .from('lawsuits')
+        .select('*')
+        .eq('politician_id', selectedPolitician.id)
+        .order('date_judgment', { ascending: false })
+
+      if (scans) setScandals(scans)
+      if (laws) setLawsuits(laws)
+
+      console.log(`Loaded ${scans?.length || 0} scandals and ${laws?.length || 0} lawsuits for ${selectedPolitician.name}`)
+
       setLoadingScandals(false)
     }
     fetchData()
@@ -494,138 +522,159 @@ export default function App() {
                 <span className="px-3 py-1 bg-white/5 rounded-[4px] text-[10px] font-black text-slate-400 uppercase tracking-widest border border-white/5">{selectedPolitician.role}</span>
               </div>
 
+              {(() => {
+                const total = scandals.length + lawsuits.length
+                const getAlertColor = () => {
+                  if (total <= 5) return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                  if (total <= 15) return 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                  if (total <= 25) return 'bg-orange-500/10 border-orange-500/20 text-orange-400'
+                  return 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                }
+
+                if (total === 0) return (
+                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-[6px] p-3 max-w-[280px] mx-auto animate-in zoom-in duration-300">
+                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest leading-relaxed">Nenhum registro público localizado</p>
+                  </div>
+                )
+
+                return (
+                  <div className={`${getAlertColor()} border rounded-[6px] p-3 max-w-[280px] mx-auto animate-in zoom-in duration-300`}>
+                    <p className="text-[9px] font-black uppercase tracking-widest leading-relaxed">
+                      Este candidato possui {total} registros vinculados ao seu histórico
+                    </p>
+                  </div>
+                )
+              })()}
+
+              {/* ABAS (Novidade V33) */}
               {!loadingScandals && (
-                <div className="bg-rose-500/10 border border-rose-500/20 rounded-[6px] p-3 max-w-[280px] mx-auto animate-in zoom-in duration-300">
-                  <p className="text-[9px] font-black text-rose-400 uppercase tracking-widest leading-relaxed">
-                    {(() => {
-                      const text = scandals.map(s => s.title + ' ' + s.caption).join(' ').toLowerCase()
-                      const keywords = ['corrupção', 'desvio', 'escândalo', 'propina', 'fraude']
-                      const found = keywords.filter(k => text.includes(k))
-                      const total = scandals.length + lawsuits.length
-
-                      if (total === 0) return 'Nenhuma menção criminal detectada'
-
-                      if (found.length > 0) {
-                        const wordList = found.map(w => w.toUpperCase()).join(', ')
-                        return `As palavras ${wordList} são mencionadas em ${total} registros`
-                      }
-                      return `Este candidato possui ${total} registros no dossiê`
-                    })()}
-                  </p>
+                <div className="flex gap-1 mt-6 bg-black/40 p-1 rounded-[6px] border border-white/5 overflow-x-auto custom-scroll no-scrollbar">
+                  {[
+                    { id: 'lawsuits', label: '⚖️ Jurídico', show: lawsuits.length > 0 },
+                    { id: 'projects', label: '🏆 Projetos', show: scandals.some(s => s.is_positive && !s.title.startsWith('VOTAÇÃO:')) },
+                    { id: 'votes', label: '🗳️ Votos', show: selectedPolitician.role !== 'Presidente' && scandals.some(s => s.is_positive && s.title.startsWith('VOTAÇÃO:')) },
+                    { id: 'noticias', label: '📰 Notícias', show: scandals.some(s => !s.is_positive) }
+                  ].filter(t => t.show).map(tab => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setActiveTab(tab.id)}
+                      className={`flex-1 min-w-[80px] py-2 px-3 text-[9px] font-black uppercase tracking-widest rounded-[4px] transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
                 </div>
               )}
             </div>
             <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 bg-black/20 custom-scroll">
               {loadingScandals ? <div className="flex flex-col items-center justify-center p-12 space-y-4">
                 <Loader2 className="animate-spin text-indigo-500" size={32} />
-                <span className="text-[10px] font-black text-slate-500 uppercase">Consultando bases criminais...</span>
+                <span className="text-[10px] font-black text-slate-500 uppercase">Consultando histórico...</span>
               </div> : (
-                <div className="space-y-8">
-                  {/* SEÇÃO: PROCESSOS JUDICIAIS */}
-                  {lawsuits.length > 0 && (
-                    <div className="space-y-4">
-                      <button
-                        onClick={() => setExpandedSections(prev => ({ ...prev, lawsuits: !prev.lawsuits }))}
-                        className="w-full text-left flex items-center justify-between border-b border-white/5 pb-4 group"
-                      >
-                        <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-2 group-hover:text-indigo-400 transition-colors">
-                          <Scale className="text-indigo-400" size={14} /> Dossiê Jurídico
-                        </h3>
-                        {expandedSections.lawsuits ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
-                      </button>
-
-                      {expandedSections.lawsuits && (
-                        <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
-                          {lawsuits.slice(0, visibleCounts.lawsuits).map((l, i) => (
-                            <div key={i} className="p-4 bg-indigo-500/5 border border-indigo-500/10 rounded-[6px]">
-                              <div className="flex justify-between items-start mb-2">
-                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 text-white rounded-[4px] shadow-sm ${l.court === 'STF' ? 'bg-amber-600' : l.court === 'JUSBRASIL' ? 'bg-emerald-600' : 'bg-indigo-500'}`}>{l.court}</span>
-                                <span className="text-[9px] text-slate-500 font-mono font-bold truncate max-w-[120px]" title={l.process_number}>{l.process_number}</span>
-                              </div>
-                              <p className="text-white text-xs font-bold mb-2">{l.description}</p>
-                              <div className="flex justify-between items-center mt-3">
-                                <div className="px-2 py-1 bg-white/5 rounded-[4px] text-[8px] font-black text-slate-400 uppercase tracking-widest border border-white/5">{l.status}</div>
-                                {l.news_url && (
-                                  <a href={l.news_url} target="_blank" rel="noopener noreferrer" className="text-[8px] text-indigo-400 font-black uppercase hover:underline flex items-center gap-1">
-                                    Ver Detalhes STF <ExternalLink size={8} />
-                                  </a>
-                                )}
-                              </div>
-                            </div>
-                          ))}
-                          {lawsuits.length > visibleCounts.lawsuits && (
-                            <button
-                              onClick={() => setVisibleCounts(prev => ({ ...prev, lawsuits: prev.lawsuits + 20 }))}
-                              className="w-full py-3 bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest text-slate-400 rounded-[6px] transition-colors"
-                            >
-                              Carregar mais processos ({lawsuits.length - visibleCounts.lawsuits} restantes)
-                            </button>
-                          )}
+                <div className="space-y-6">
+                  {/* CONTEÚDO DA ABA: JURÍDICO */}
+                  {activeTab === 'lawsuits' && lawsuits.length > 0 && (
+                    <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
+                      {lawsuits.map((l, i) => (
+                        <div key={i} className="p-4 bg-indigo-500/5 border border-indigo-500/10 rounded-[6px]">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className={`text-[9px] font-black uppercase px-2 py-0.5 text-white rounded-[4px] shadow-sm ${l.court === 'STF' ? 'bg-amber-600' : l.court === 'JUSBRASIL' ? 'bg-emerald-600' : 'bg-indigo-500'}`}>{l.court}</span>
+                            <span className="text-[9px] text-slate-500 font-mono font-bold truncate max-w-[120px]" title={l.process_number}>{l.process_number}</span>
+                          </div>
+                          <p className="text-white text-xs font-bold mb-2">{l.description}</p>
+                          <div className="flex justify-between items-center mt-3">
+                            <div className="px-2 py-1 bg-white/5 rounded-[4px] text-[8px] font-black text-slate-400 uppercase tracking-widest border border-white/5">{l.status}</div>
+                            {l.news_url && (
+                              <a href={l.news_url} target="_blank" rel="noopener noreferrer" className="text-[8px] text-indigo-400 font-black uppercase hover:underline flex items-center gap-1">
+                                Ver Detalhes <ExternalLink size={8} />
+                              </a>
+                            )}
+                          </div>
                         </div>
-                      )}
+                      ))}
                     </div>
                   )}
 
-                  {/* SEÇÃO: ESCÂNDALOS E NOTÍCIAS */}
-                  <div className="space-y-4">
-                    {scandals.length === 0 && lawsuits.length === 0 ? (
-                      <div className="flex flex-col items-center justify-center py-20 space-y-4 opacity-40">
-                        <div className="w-16 h-16 rounded-full border border-emerald-500/30 flex items-center justify-center">
-                          <CheckCircle size={32} className="text-emerald-500" />
-                        </div>
-                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-500">Ficha Limpa Detectada</p>
-                      </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => setExpandedSections(prev => ({ ...prev, scandals: !prev.scandals }))}
-                          className="w-full text-left flex items-center justify-between border-b border-white/5 pb-4 group"
-                        >
-                          <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-2 group-hover:text-rose-400 transition-colors">
-                            <ShieldAlert className="text-rose-500" size={14} /> Histórico de Notícias
-                          </h3>
-                          {expandedSections.scandals ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
-                        </button>
-
-                        {expandedSections.scandals && (
-                          <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
-                            {scandals.slice(0, visibleCounts.scandals).map((s, i) => (
-                              <a key={i} href={s.news_url} target="_blank" rel="noopener noreferrer" className="block p-5 bg-black/40 border border-white/5 rounded-[6px] hover:border-white/20 hover:bg-black/60 transition-all group">
-                                <div className="flex justify-between items-center mb-3">
-                                  <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-[4px] shadow-lg ${s.is_positive ? 'bg-emerald-600 text-white' :
-                                      s.severity === 'critical' ? 'bg-rose-600 text-white' :
-                                        s.severity === 'high' ? 'bg-rose-400 text-black' :
-                                          s.severity === 'medium' ? 'bg-amber-400 text-black' :
-                                            'bg-slate-600 text-white'
-                                    }`}>
-                                    {s.is_positive ? 'POSITIVO' :
-                                      s.severity === 'critical' ? 'CONDENADO' :
-                                        s.severity === 'high' ? 'GRAVE' :
-                                          s.severity === 'medium' ? 'INVESTIGAÇÃO' : 'MENÇÃO'}
-                                  </span>
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-[10px] text-slate-600 font-bold font-mono">{new Date(s.date_occurrence).toLocaleDateString('pt-BR')}</span>
-                                    <ExternalLink size={12} className="text-slate-600 group-hover:text-indigo-400" />
-                                  </div>
-                                </div>
-                                <h4 className="text-white text-base font-black leading-tight mb-2 uppercase tracking-tight group-hover:text-indigo-300 transition-colors">{s.title}</h4>
-                                <p className="text-slate-500 text-xs line-clamp-3 leading-relaxed font-medium">{s.caption}</p>
-                              </a>
-                            ))}
-
-                            {scandals.length > visibleCounts.scandals && (
-                              <button
-                                onClick={() => setVisibleCounts(prev => ({ ...prev, scandals: prev.scandals + 20 }))}
-                                className="w-full py-3 bg-white/5 hover:bg-white/10 text-[10px] font-black uppercase tracking-widest text-slate-400 rounded-[6px] transition-colors"
-                              >
-                                Carregar mais notícias ({scandals.length - visibleCounts.scandals} restantes)
-                              </button>
-                            )}
+                  {/* CONTEÚDO DA ABA: PROJETOS */}
+                  {activeTab === 'projects' && (
+                    <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
+                      {scandals.filter(s => s.is_positive && !s.title.startsWith('VOTAÇÃO:')).map((p, i) => (
+                        <a key={i} href={p.news_url} target="_blank" rel="noopener noreferrer" className="group block bg-emerald-500/5 border border-emerald-500/10 p-5 rounded-[6px] hover:border-emerald-500/30 transition-all">
+                          <h4 className="text-[12px] font-black text-emerald-100 leading-tight mb-2 group-hover:text-emerald-300 uppercase tracking-tight">{p.title}</h4>
+                          <p className="text-[10px] text-emerald-400/60 font-black uppercase tracking-widest flex items-center gap-2">
+                            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" /> {p.caption || 'Sugestão Legislativa'}
+                          </p>
+                          <div className="mt-4 flex justify-end">
+                            <span className="text-[8px] font-black uppercase text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded-[3px]">Ver Projeto</span>
                           </div>
-                        )}
-                      </>
-                    )}
-                  </div>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* CONTEÚDO DA ABA: VOTOS */}
+                  {activeTab === 'votes' && (
+                    <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
+                      {scandals.filter(s => s.is_positive && s.title.startsWith('VOTAÇÃO:')).map((v, i) => {
+                        const voteType = v.caption.split('-')[0].replace('Voto:', '').trim().toUpperCase()
+                        const isSim = voteType.includes('SIM')
+                        const isNao = voteType.includes('NÃO')
+                        return (
+                          <div key={i} className="bg-black/40 border border-white/5 p-4 rounded-[6px] flex flex-col gap-3 group hover:border-indigo-500/30 transition-all">
+                            <div className="flex justify-between items-start gap-4">
+                              <h4 className="text-[11px] font-black text-slate-100 uppercase tracking-tight leading-tight flex-1">{v.title.replace('VOTAÇÃO:', '').trim()}</h4>
+                              <div className={`shrink-0 px-3 py-1.5 rounded-[4px] text-[10px] font-black border ${isSim ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : isNao ? 'bg-rose-500/10 border-rose-500/20 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.2)]' : 'bg-slate-700/50 border-white/10 text-slate-400'}`}>
+                                VOTO: {voteType}
+                              </div>
+                            </div>
+                            <div className="flex justify-between items-center pt-2 border-t border-white/5">
+                              <span className="text-[9px] font-bold text-slate-600 font-mono uppercase tracking-widest">{v.caption.split('-')[1]?.trim() || 'Data não informada'}</span>
+                              <a href={v.news_url} target="_blank" rel="noopener noreferrer" className="text-[9px] font-black text-indigo-400 hover:text-indigo-300 flex items-center gap-1 uppercase tracking-widest">
+                                Detalhes <ExternalLink size={10} />
+                              </a>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* CONTEÚDO DA ABA: NOTÍCIAS */}
+                  {activeTab === 'noticias' && (
+                    <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
+                      {scandals.filter(s => !s.is_positive).map((s, i) => {
+                        const getCat = () => {
+                          if (s.severity === 'critical') return { label: 'CONDENAÇÃO', color: 'bg-rose-600 text-white shadow-[0_0_15px_rgba(225,29,72,0.4)]' };
+                          if (s.severity === 'high') return { label: 'INVESTIGAÇÃO', color: 'bg-orange-600 text-white' };
+                          return { label: 'MENÇÃO', color: 'bg-slate-700 text-slate-300' };
+                        }
+                        const cat = getCat();
+                        return (
+                          <a key={i} href={s.news_url} target="_blank" rel="noopener noreferrer" className="block p-5 bg-black/40 border border-white/5 rounded-[6px] hover:border-white/20 hover:bg-black/60 transition-all group">
+                            <div className="flex justify-between items-center mb-3">
+                              <span className={`text-[7px] font-black uppercase px-2 py-1 rounded-[4px] shadow-lg ${cat.color}`}>{cat.label}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] text-slate-600 font-bold font-mono">{new Date(s.date_occurrence).toLocaleDateString('pt-BR')}</span>
+                                <ExternalLink size={12} className="text-slate-600 group-hover:text-indigo-400" />
+                              </div>
+                            </div>
+                            <h4 className="text-white text-sm font-black leading-tight mb-2 uppercase tracking-tight group-hover:text-indigo-300 transition-colors">{s.title}</h4>
+                            <p className="text-slate-500 text-[10px] line-clamp-3 leading-relaxed font-medium italic">{s.caption}</p>
+                          </a>
+                        )
+                      })}
+                    </div>
+                  )}
+
+                  {/* ESTADO VAZIO: Se a aba ativa não tiver nada (raro por causa do show: tab.show) */}
+                  {(activeTab === 'lawsuits' && lawsuits.length === 0) && (
+                    <div className="flex flex-col items-center justify-center py-20 space-y-4 opacity-40">
+                      <div className="w-16 h-16 rounded-full border border-emerald-500/30 flex items-center justify-center">
+                        <CheckCircle size={32} className="text-emerald-500" />
+                      </div>
+                      <p className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-500">Nenhum Registro Localizado</p>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

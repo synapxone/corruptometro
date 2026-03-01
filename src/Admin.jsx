@@ -28,7 +28,12 @@ const CARGO_ROLE_MAP = { '1': 'Presidente', '3': 'Governador', '5': 'Senador', '
 const proxyImage = (url) => {
   if (!url) return null
   if (url.includes('wsrv.nl')) return url
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}`
+  try {
+    const normalized = decodeURIComponent(url)
+    return `https://wsrv.nl/?url=${encodeURIComponent(normalized)}&default=identicon`
+  } catch (e) {
+    return `https://wsrv.nl/?url=${encodeURIComponent(url)}&default=identicon`
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -377,14 +382,34 @@ export default function Admin({ onClose }) {
     if (!confirm(`Excluir escândalo "${title}"?`)) return
     const { error } = await supabase.from('scandals').delete().eq('id', id)
     if (error) { alert('Erro ao excluir: ' + error.message); return }
+
+    // Atualiza o estado local imediatamente
+    setExpandedScandals(prev => prev.filter(s => s.id !== id))
+    setScandals(prev => prev.filter(s => s.id !== id))
+
     loadData()
     recalcScore(politicianId)
   }
 
   const deleteAllScandals = async (politicianId, politicianName) => {
-    if (!confirm(`Deseja realmente apagar TODOS os escândalos de "${politicianName}"? Esta ação não pode ser desfeita.`)) return
-    const { error } = await supabase.from('scandals').delete().eq('politician_id', politicianId)
-    if (error) { alert('Erro ao limpar escândalos: ' + error.message); return }
+    if (!confirm(`Deseja realmente apagar TODOS os registros (notícias e processos) de "${politicianName}"? Esta ação não pode ser desfeita.`)) return
+
+    // Deletar escândalos
+    const { error: errS } = await supabase.from('scandals').delete().eq('politician_id', politicianId)
+    // Deletar processos
+    const { error: errL } = await supabase.from('lawsuits').delete().eq('politician_id', politicianId)
+
+    if (errS || errL) {
+      alert('Erro ao limpar registros: ' + (errS?.message || errL?.message))
+      return
+    }
+
+    // Atualiza o estado local imediatamente
+    if (expandedPolitician === politicianId) {
+      setExpandedScandals([])
+    }
+    setScandals(prev => prev.filter(s => s.politician_id !== politicianId))
+
     loadData()
     recalcScore(politicianId)
   }
@@ -519,18 +544,42 @@ export default function Admin({ onClose }) {
   // ── Scan Functions ───────────────────────────────────────────────────────
   const handleScanPolitician = async (politician) => {
     setScanningId(politician.id)
-    setScanLogs(prev => ({ ...prev, [politician.id]: ['Iniciando scan expandido...'] }))
+    setScanLogs(prev => ({ ...prev, [politician.id]: ['🔍 Iniciando consulta legislativa (V32 - Votos + Projetos)...', '🤖 IA analisando contexto jurídico estrito... aguarde.'] }))
     try {
       const { data, error } = await supabase.functions.invoke('scan-politician', {
         body: {
           name: politician.name,
           politicianId: politician.id,
           saveToDb: true,
-          year: scrapeYear // Passa o ano selecionado na aba 'Raspagem'
+          year: scrapeYear
         },
       })
       if (error) throw new Error(error.message)
-      setScanLogs(prev => ({ ...prev, [politician.id]: data.log || [] }))
+
+      const newsCount = data.scandals?.length || 0
+      const lawsCount = data.lawsuits?.length || 0
+      const posCount = data.scandals?.filter(s => s.is_positive).length || 0
+      const negCount = data.scandals?.filter(s => !s.is_positive && s.severity !== 'ignore').length || 0
+
+      const report = [
+        ...data.log,
+        `──────────────────────────────`,
+        `📊 RELATÓRIO FINAL:`,
+        `• Notícias Encontradas: ${newsCount}`,
+        `• Processos (STF/JusBrasil): ${lawsCount}`,
+        `• Veredito IA (Positivo): ${posCount} ✅`,
+        `• Veredito IA (Negativo): ${negCount} ⚠️`,
+        `✓ Dados sincronizados com o banco.`
+      ]
+
+      setScanLogs(prev => ({ ...prev, [politician.id]: report }))
+
+      // Se estiver expandido, atualiza a lista interna na hora
+      if (expandedPolitician === politician.id) {
+        const { data: fresh } = await supabase.from('scandals').select('*').eq('politician_id', politician.id).order('date_occurrence', { ascending: false })
+        setExpandedScandals(fresh || [])
+      }
+
       await loadData()
     } catch (err) {
       setScanLogs(prev => ({ ...prev, [politician.id]: [`Erro: ${err.message}`] }))
