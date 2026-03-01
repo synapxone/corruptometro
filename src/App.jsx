@@ -43,6 +43,7 @@ export default function App() {
   const [filterState, setFilterState] = useState('')
   const [showColinha, setShowColinha] = useState(false)
   const [activeTab, setActiveTab] = useState('lawsuits')
+  const [isMaximized, setIsMaximized] = useState(false)
   const [scanLogs, setScanLogs] = useState([])
 
   // Modal display states
@@ -66,8 +67,8 @@ export default function App() {
   useEffect(() => {
     if (selectedPolitician && !loadingScandals) {
       if (lawsuits.length > 0) setActiveTab('lawsuits')
-      else if (scandals.some(s => s.is_positive && !s.title.startsWith('VOTAÇÃO:'))) setActiveTab('projects')
-      else if (scandals.some(s => s.is_positive && s.title.startsWith('VOTAÇÃO:'))) setActiveTab('votes')
+      else if (scandals.some(s => s.is_positive && !s.title.includes('VOTAÇÃO:'))) setActiveTab('projects')
+      else if (scandals.some(s => s.is_positive && s.title.includes('VOTAÇÃO:'))) setActiveTab('votes')
       else setActiveTab('noticias')
     }
   }, [selectedPolitician, loadingScandals, lawsuits.length, scandals.length])
@@ -489,12 +490,23 @@ export default function App() {
 
       {/* MODAL DOSSIER ( Lupinha Preview ) */}
       {selectedPolitician && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="w-full max-w-lg bg-[#0a0d10] rounded-[6px] border border-white/20 overflow-hidden flex flex-col shadow-2xl h-[90vh] sm:h-[85vh] relative">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className={`${isMaximized ? 'w-full max-w-4xl h-[95vh]' : 'w-full max-w-lg h-[90vh] sm:h-[85vh]'} bg-[#0a0d10] rounded-[6px] border border-white/20 overflow-hidden flex flex-col shadow-2xl relative transition-all duration-500`}>
             <div className={`absolute top-0 inset-x-0 h-1 ${getStatusBg(selectedPolitician.score)}`} />
 
             <div className="p-8 text-center bg-black/40 border-b border-white/5 relative">
-              <header className="absolute top-6 right-6"><button onClick={() => setSelectedPolitician(null)} className="p-2 bg-white/5 hover:bg-rose-500 rounded-[6px] transition-all"><X size={18} /></button></header>
+              <header className="absolute top-6 right-6 flex items-center gap-2">
+                <button
+                  onClick={() => setIsMaximized(!isMaximized)}
+                  className="hidden sm:flex p-2 bg-white/5 hover:bg-white/10 text-slate-400 rounded-[6px] transition-all"
+                  title={isMaximized ? "Minimizar" : "Maximizar"}
+                >
+                  {isMaximized ? <X size={18} className="rotate-45" /> : <ZoomIn size={18} />}
+                </button>
+                <button onClick={() => { setSelectedPolitician(null); setIsMaximized(false); }} className="p-2 bg-white/5 hover:bg-rose-500 rounded-[6px] transition-all">
+                  <X size={18} />
+                </button>
+              </header>
               <div className="relative inline-block">
                 <div className="w-24 h-24 rounded-[6px] mx-auto mb-4 shadow-2xl border-2 border-indigo-500 overflow-hidden bg-slate-900 relative">
                   {selectedPolitician.photo_url && (
@@ -551,8 +563,8 @@ export default function App() {
                 <div className="flex gap-1 mt-6 bg-black/40 p-1 rounded-[6px] border border-white/5 overflow-x-auto custom-scroll no-scrollbar">
                   {[
                     { id: 'lawsuits', label: '⚖️ Jurídico', show: lawsuits.length > 0 },
-                    { id: 'projects', label: '🏆 Projetos', show: scandals.some(s => s.is_positive && !s.title.startsWith('VOTAÇÃO:')) },
-                    { id: 'votes', label: '🗳️ Votos', show: selectedPolitician.role !== 'Presidente' && scandals.some(s => s.is_positive && s.title.startsWith('VOTAÇÃO:')) },
+                    { id: 'projects', label: '🏆 Projetos', show: scandals.some(s => s.is_positive && !s.title.includes('VOTAÇÃO:')) },
+                    { id: 'votes', label: '🗳️ Votos', show: selectedPolitician.role !== 'Presidente' && scandals.some(s => s.is_positive && s.title.includes('VOTAÇÃO:')) },
                     { id: 'noticias', label: '📰 Notícias', show: scandals.some(s => !s.is_positive) }
                   ].filter(t => t.show).map(tab => (
                     <button
@@ -615,7 +627,7 @@ export default function App() {
                   {/* CONTEÚDO DA ABA: VOTOS */}
                   {activeTab === 'votes' && (
                     <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
-                      {scandals.filter(s => s.is_positive && s.title.startsWith('VOTAÇÃO:')).map((v, i) => {
+                      {scandals.filter(s => s.is_positive && s.title.includes('VOTAÇÃO:')).map((v, i) => {
                         const voteType = v.caption.split('-')[0].replace('Voto:', '').trim().toUpperCase()
                         const isSim = voteType.includes('SIM')
                         const isNao = voteType.includes('NÃO')
