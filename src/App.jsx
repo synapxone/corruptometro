@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Search, ShieldAlert, CheckCircle,
   ExternalLink, X, User, Loader2,
-  Trophy, Share2, ZoomIn
+  Trophy, Share2, ZoomIn, Scale
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { toPng } from 'html-to-image'
@@ -18,6 +18,7 @@ const roleLabels = {
 export default function App() {
   const [selectedPolitician, setSelectedPolitician] = useState(null)
   const [scandals, setScandals] = useState([])
+  const [lawsuits, setLawsuits] = useState([])
   const [loadingScandals, setLoadingScandals] = useState(false)
 
   const [searchingRole, setSearchingRole] = useState(null)
@@ -79,13 +80,19 @@ export default function App() {
       setColinha(prev => ({ ...prev, [role]: null }))
       return
     }
-    trackAction('input_search', { role: role, number })
-    const { data } = await supabase
+
+    let query = supabase
       .from('politicians')
       .select('*')
       .eq('candidate_number', number)
       .eq('role', roleLabels[role].replace(/\s\d$/, ''))
-      .single()
+
+    // Filtro de estado para cargos não nacionais
+    if (role !== 'presidente' && filterState) {
+      query = query.eq('state', filterState)
+    }
+
+    const { data, error } = await query.maybeSingle()
 
     if (data) setColinha(prev => ({ ...prev, [role]: data }))
     else setColinha(prev => ({ ...prev, [role]: null }))
@@ -132,14 +139,19 @@ export default function App() {
 
   useEffect(() => {
     if (selectedPolitician) {
-      const fetchScandals = async () => {
+      const fetchData = async () => {
         setLoadingScandals(true)
         setScandals([])
-        const { data } = await supabase.from('scandals').select('*').eq('politician_id', selectedPolitician.id).order('date_occurrence', { ascending: false })
-        if (data) setScandals(data)
+        setLawsuits([])
+        const [scans, laws] = await Promise.all([
+          supabase.from('scandals').select('*').eq('politician_id', selectedPolitician.id).order('date_occurrence', { ascending: false }),
+          supabase.from('lawsuits').select('*').eq('politician_id', selectedPolitician.id).order('created_at', { ascending: false })
+        ])
+        if (scans.data) setScandals(scans.data)
+        if (laws.data) setLawsuits(laws.data)
         setLoadingScandals(false)
       }
-      fetchScandals()
+      fetchData()
     }
   }, [selectedPolitician])
 
@@ -275,8 +287,12 @@ export default function App() {
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">{roleLabels[key]}</span>
                         <div className="flex gap-1">
                           {p && (
-                            <button onClick={() => setSelectedPolitician(p)} className="text-indigo-400 hover:text-white p-2 hover:bg-indigo-500/10 rounded-[6px] transition-all" title="Ver detalhes">
-                              <ZoomIn size={16} />
+                            <button
+                              onClick={() => setSelectedPolitician(p)}
+                              className="flex items-center gap-1.5 px-2 py-1 bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 rounded-[4px] border border-indigo-500/10 transition-all group-hover:scale-105"
+                            >
+                              <span className="text-[8px] font-black uppercase tracking-widest whitespace-nowrap">Ver Dossiê</span>
+                              <ZoomIn size={12} />
                             </button>
                           )}
                           <button onClick={() => setSearchingRole(key)} className="text-slate-500 hover:text-white p-2 hover:bg-white/5 rounded-[6px] transition-all"><Search size={16} /></button>
@@ -294,7 +310,7 @@ export default function App() {
                             <div className="flex items-center w-full gap-2 bg-black/60 border border-white/5 rounded-[6px] p-2 shadow-xl overflow-hidden relative">
                               <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-[4px] overflow-hidden bg-slate-900 shrink-0 border border-white/10 relative">
                                 <User className="w-full h-full p-2 text-slate-800 absolute inset-0" />
-                                {p.photo_url && <img src={p.photo_url} crossOrigin="anonymous" className="w-full h-full object-cover absolute inset-0" onError={e => e.target.remove()} />}
+                                {p.photo_url && <img src={p.photo_url} className="w-full h-full object-cover absolute inset-0" onError={e => e.target.remove()} />}
                               </div>
                               <div className="flex-1 min-w-0 overflow-hidden">
                                 <div className="text-[11px] font-black text-white truncate uppercase tracking-tight mb-0.5">{p.name}</div>
@@ -403,8 +419,8 @@ export default function App() {
 
       {/* MODAL DOSSIER ( Lupinha Preview ) */}
       {selectedPolitician && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/95 backdrop-blur-md animate-in fade-in zoom-in-95 duration-200">
-          <div className="w-full max-w-lg glass-surface rounded-[6px] border border-white/20 overflow-hidden flex flex-col shadow-2xl h-[85vh] relative">
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="w-full max-w-lg bg-[#0a0d10] rounded-[6px] border border-white/20 overflow-hidden flex flex-col shadow-2xl h-[90vh] sm:h-[85vh] relative">
             <div className={`absolute top-0 inset-x-0 h-1 ${getStatusBg(selectedPolitician.score)}`} />
 
             <div className="p-8 text-center bg-black/40 border-b border-white/5 relative">
