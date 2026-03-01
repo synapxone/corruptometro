@@ -308,10 +308,18 @@ export default function App() {
                         <div className="flex-1 min-w-0 min-h-[4rem] flex items-center overflow-hidden">
                           {p ? (
                             <div className="flex items-center w-full gap-2 bg-black/60 border border-white/5 rounded-[6px] p-2 shadow-xl overflow-hidden relative">
-                              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-[4px] overflow-hidden bg-slate-900 shrink-0 border border-white/10 relative">
-                                <User className="w-full h-full p-2 text-slate-800 absolute inset-0" />
-                                {p.photo_url && <img src={p.photo_url} className="w-full h-full object-cover absolute inset-0" onError={e => e.target.remove()} />}
-                              </div>
+                              {p.photo_url && (
+                                <img
+                                  src={p.photo_url}
+                                  referrerPolicy="no-referrer"
+                                  className="w-full h-full object-cover absolute inset-0"
+                                  onError={e => {
+                                    e.target.style.display = 'none';
+                                    e.currentTarget.parentElement.querySelector('.fallback-icon').style.display = 'block';
+                                  }}
+                                />
+                              )}
+                              <User className="w-full h-full p-2 text-slate-800 absolute inset-0 fallback-icon" style={{ display: p.photo_url ? 'none' : 'block' }} />
                               <div className="flex-1 min-w-0 overflow-hidden">
                                 <div className="text-[11px] font-black text-white truncate uppercase tracking-tight mb-0.5">{p.name}</div>
                                 <div className="flex items-center gap-1 min-w-0 overflow-hidden">
@@ -396,8 +404,18 @@ export default function App() {
                   searchResults.map(p => (
                     <button key={p.id} onClick={() => selectPoliticianFromSearch(p)} className="flex items-center gap-4 p-4 bg-white/5 rounded-[6px] border border-white/5 hover:bg-indigo-500/10 hover:border-indigo-500/20 transition-all text-left poll-card">
                       <div className="w-12 h-12 rounded-[6px] overflow-hidden bg-slate-900 border border-white/10 shrink-0 relative">
-                        <User className="w-full h-full p-2.5 text-slate-700 absolute inset-0" />
-                        {p.photo_url && <img src={p.photo_url} className="w-full h-full object-cover absolute inset-0" onError={e => e.target.remove()} />}
+                        {p.photo_url && (
+                          <img
+                            src={p.photo_url}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover absolute inset-0"
+                            onError={e => {
+                              e.target.style.display = 'none';
+                              e.currentTarget.parentElement.querySelector('.fallback-icon').style.display = 'block';
+                            }}
+                          />
+                        )}
+                        <User className="w-full h-full p-2.5 text-slate-700 absolute inset-0 fallback-icon" style={{ display: p.photo_url ? 'none' : 'block' }} />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-white font-black text-sm truncate uppercase tracking-tight mb-1">{p.name}</div>
@@ -427,8 +445,19 @@ export default function App() {
               <header className="absolute top-6 right-6"><button onClick={() => setSelectedPolitician(null)} className="p-2 bg-white/5 hover:bg-rose-500 rounded-[6px] transition-all"><X size={18} /></button></header>
               <div className="relative inline-block">
                 <div className="w-24 h-24 rounded-[6px] mx-auto mb-4 shadow-2xl border-2 border-indigo-500 overflow-hidden bg-slate-900 relative">
-                  <User className="w-full h-full p-4 text-slate-700 absolute inset-0" />
-                  {selectedPolitician.photo_url && <img src={selectedPolitician.photo_url} className="w-full h-full object-cover absolute inset-0" alt={selectedPolitician.name} onError={e => e.target.remove()} />}
+                  {selectedPolitician.photo_url && (
+                    <img
+                      src={selectedPolitician.photo_url}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover absolute inset-0"
+                      alt={selectedPolitician.name}
+                      onError={e => {
+                        e.target.style.display = 'none';
+                        e.currentTarget.parentElement.querySelector('.fallback-icon').style.display = 'block';
+                      }}
+                    />
+                  )}
+                  <User className="w-full h-full p-4 text-slate-700 absolute inset-0 fallback-icon" style={{ display: selectedPolitician.photo_url ? 'none' : 'block' }} />
                 </div>
                 <div className={`absolute -bottom-1 -right-1 w-8 h-8 rounded-full border-4 border-black flex items-center justify-center text-[12px] font-black text-black shadow-xl ${getStatusBg(selectedPolitician.score)}`}>
                   {selectedPolitician.score}
@@ -491,16 +520,15 @@ export default function App() {
                       scandals.map((s, i) => (
                         <a key={i} href={s.news_url} target="_blank" rel="noopener noreferrer" className="block p-5 bg-black/40 border border-white/5 rounded-[6px] hover:border-white/20 hover:bg-black/60 transition-all group">
                           <div className="flex justify-between items-center mb-3">
-                            <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-[4px] shadow-lg ${
-                              s.severity === 'critical' ? 'bg-rose-600 text-white' :
-                              s.severity === 'high'     ? 'bg-rose-400 text-black' :
-                              s.severity === 'medium'   ? 'bg-amber-400 text-black' :
-                                                          'bg-slate-600 text-white'
-                            }`}>{
-                              s.severity === 'critical' ? 'CONDENADO' :
-                              s.severity === 'high'     ? 'GRAVE' :
-                              s.severity === 'medium'   ? 'MÉDIO' : 'LEVE'
-                            }</span>
+                            <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-[4px] shadow-lg ${s.severity === 'critical' ? 'bg-rose-600 text-white' :
+                                s.severity === 'high' ? 'bg-rose-400 text-black' :
+                                  s.severity === 'medium' ? 'bg-amber-400 text-black' :
+                                    'bg-slate-600 text-white'
+                              }`}>{
+                                s.severity === 'critical' ? 'CONDENADO' :
+                                  s.severity === 'high' ? 'GRAVE' :
+                                    s.severity === 'medium' ? 'MÉDIO' : 'LEVE'
+                              }</span>
                             <div className="flex items-center gap-2">
                               <span className="text-[10px] text-slate-600 font-bold font-mono">{new Date(s.date_occurrence).toLocaleDateString('pt-BR')}</span>
                               <ExternalLink size={12} className="text-slate-600 group-hover:text-indigo-400" />
