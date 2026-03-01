@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import {
   X, Plus, Edit2, Trash2, RefreshCw, Search,
   Download, AlertTriangle, CheckCircle, Shield,
-  ChevronDown, ChevronUp, Database, Zap, Activity, Globe, User, Image as ImageIcon, Loader2
+  ChevronDown, ChevronUp, Database, Zap, Activity, Globe, User, Image as ImageIcon, Loader2, Camera
 } from 'lucide-react'
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin2026'
@@ -346,6 +346,39 @@ export default function Admin({ onClose }) {
   const [scanAllActive, setScanAllActive] = useState(false)
   const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 })
   const [scanLogs, setScanLogs] = useState({}) // { [politicianId]: string[] }
+  const [syncingPhotos, setSyncingPhotos] = useState(false)
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 })
+
+  const handleSyncAllPhotos = async () => {
+    const toSync = politicians.filter(p => p.photo_url && !p.photo_url.includes('supabase.co'))
+    if (toSync.length === 0) { alert('Todas as fotos já estão sincronizadas localmente.'); return; }
+
+    if (!confirm(`Sincronizar ${toSync.length} fotos para o Storage local? Isso resolve problemas de carregamento.`)) return;
+
+    setSyncingPhotos(true)
+    setSyncProgress({ current: 0, total: toSync.length })
+    setTab('scraping')
+    addLog(`Dando início à sincronização local de ${toSync.length} fotos...`)
+
+    for (let i = 0; i < toSync.length; i++) {
+      const p = toSync[i]
+      setSyncProgress({ current: i + 1, total: toSync.length })
+      addLog(`[${i + 1}/${toSync.length}] Sincronizando: ${p.name}...`)
+      try {
+        await supabase.functions.invoke('scan-politician', {
+          body: { name: p.name, politicianId: p.id, photoOnly: true }
+        })
+      } catch (e) {
+        addLog(`⚠ Erro em ${p.name}: ${e.message}`, 'warn')
+      }
+      await new Promise(r => setTimeout(r, 300))
+    }
+
+    setSyncingPhotos(false)
+    setSyncProgress({ current: 0, total: 0 })
+    addLog(`✓ Sincronização de fotos concluída!`, 'success')
+    loadData()
+  }
 
   // ── Undo Delete ──────────────────────────────────────────────────────────────
   // pendingDelete = { type, label, backup, executeDelete: async fn }
@@ -587,6 +620,18 @@ export default function Admin({ onClose }) {
         .eq('state', payload.state)
       if (e2) { alert('Erro: ' + (error.message || e2.message)); return }
     }
+
+    // Auto-sync photo to storage immediately
+    if (payload.photo_url && !payload.photo_url.includes('supabase.co')) {
+      // Find the created/updated ID
+      const { data: pol } = await supabase.from('politicians').select('id').eq('name', payload.name).maybeSingle();
+      if (pol) {
+        supabase.functions.invoke('scan-politician', {
+          body: { name: payload.name, politicianId: pol.id, photoOnly: true }
+        }).catch(() => { });
+      }
+    }
+
     setScrapeResults(prev => prev.filter(c => c !== candidate))
     loadData()
   }
@@ -1079,6 +1124,15 @@ export default function Admin({ onClose }) {
               {importing
                 ? <><RefreshCw className="animate-spin" size={14} /> Importando todos os estados...</>
                 : <><Globe size={14} /> Importar Todos os Estados + Cargos (TSE)</>
+              }
+            </button>
+
+            <button
+              onClick={handleSyncAllPhotos} disabled={syncingPhotos || politicians.length === 0}
+              className="w-full flex items-center justify-center gap-2 p-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-black uppercase tracking-widest text-xs rounded-[6px] transition-all shadow-lg shadow-emerald-500/10">
+              {syncingPhotos
+                ? <><RefreshCw className="animate-spin" size={16} /> Sincronizando: {syncProgress.current}/{syncProgress.total}</>
+                : <><Camera size={16} /> Sincronizar Todas as Fotos com Banco Local (Fix)</>
               }
             </button>
 

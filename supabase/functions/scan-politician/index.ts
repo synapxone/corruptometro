@@ -59,6 +59,50 @@ async function getAllVotes(chamberId: number, log: string[]): Promise<any[]> {
   return all;
 }
 
+async function syncPoliticianPhoto(db: any, politicianId: string, currentPhotoUrl: string | null, log: string[]) {
+  if (!currentPhotoUrl || currentPhotoUrl.includes('supabase.co')) return currentPhotoUrl;
+
+  try {
+    const res = await fetch(currentPhotoUrl, { signal: AbortSignal.timeout(10000) });
+    if (!res.ok) {
+      // Try again with user-agent if wikimedia or generic
+      const res2 = await fetch(currentPhotoUrl, {
+        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+        signal: AbortSignal.timeout(10000)
+      });
+      if (!res2.ok) {
+        log.push(`⚠ Falha ao baixar foto: ${res2.status}`);
+        return currentPhotoUrl;
+      }
+      return await uploadAndSave(db, res2, politicianId, log);
+    }
+    return await uploadAndSave(db, res, politicianId, log);
+  } catch (e: any) {
+    log.push(`⚠ Erro no sync da foto: ${e.message}`);
+    return currentPhotoUrl;
+  }
+}
+
+async function uploadAndSave(db: any, response: Response, politicianId: string, log: string[]) {
+  const blob = await response.blob();
+  const ext = response.headers.get('content-type')?.split('/')[1]?.split(';')[0] || 'jpg';
+  const filePath = `${politicianId}.${ext}`;
+
+  const { data, error } = await db.storage
+    .from('politician-photos')
+    .upload(filePath, blob, { contentType: response.headers.get('content-type') || 'image/jpeg', upsert: true });
+
+  if (error) {
+    log.push(`⚠ Erro Storage: ${error.message}`);
+    return null;
+  }
+
+  const { data: { publicUrl } } = db.storage.from('politician-photos').getPublicUrl(filePath);
+  await db.from('politicians').update({ photo_url: publicUrl }).eq('id', politicianId);
+  log.push(`✓ Foto local sincronizada e salva.`);
+  return publicUrl;
+}
+
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors })
   const log: string[] = []
@@ -68,9 +112,17 @@ serve(async (req: Request) => {
   const projects: any[] = []
 
   try {
-    const { name, politicianId, saveToDb = false } = await req.json()
-    log.push(`[SCAN-V37] Varredura completa para: ${name}`)
+    const { name, politicianId, saveToDb = false, photoOnly = false } = await req.json()
+    log.push(`[SCAN-V38] Varredura ${photoOnly ? 'FOTO APENAS' : 'COMPLETA'} para: ${name}`)
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)
+
+    if (photoOnly && politicianId) {
+      const { data: pol } = await db.from('politicians').select('photo_url').eq('id', politicianId).single();
+      if (pol?.photo_url && !pol.photo_url.includes('supabase.co')) {
+        await syncPoliticianPhoto(db, politicianId, pol.photo_url, log);
+      }
+      return new Response(JSON.stringify({ log, success: true }), { headers: { ...cors, "Content-Type": "application/json" } })
+    }
 
     // 1. VOTOS — API da Câmara com paginação completa (deputados federais)
     const chamberId = await getChamberId(name);
@@ -183,6 +235,12 @@ serve(async (req: Request) => {
     log.push(`ℹ️ Total após deduplicação: ${finalResult.length} registros (${votes.length} votos, ${scandals.filter(s => s.severity !== "ignore").length} notícias, ${projects.length} projetos)`);
 
     if (saveToDb && politicianId) {
+      // 0. Sincronizar Foto se for externa
+      const { data: pol } = await db.from('politicians').select('photo_url').eq('id', politicianId).single();
+      if (pol?.photo_url && !pol.photo_url.includes('supabase.co')) {
+        await syncPoliticianPhoto(db, politicianId, pol.photo_url, log);
+      }
+
       // Atualiza score baseado na qtd de negativos
       const negativeRecords = finalResult.filter(s => !s.is_positive).length;
       let pScore = 100;
