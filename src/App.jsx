@@ -26,12 +26,36 @@ export default function App() {
   const [isSearching, setIsSearching] = useState(false)
   const [filterState, setFilterState] = useState('')
 
-  const [inputs, setInputs] = useState({
-    presidente: '', governador: '', senador1: '', senador2: '', depFederal: '', depEstadual: ''
+  // Persistence: Load from localStorage or defaults
+  const [inputs, setInputs] = useState(() => {
+    const saved = localStorage.getItem('corruptometro_inputs')
+    return saved ? JSON.parse(saved) : {
+      presidente: '', governador: '', senador1: '', senador2: '', depFederal: '', depEstadual: ''
+    }
+  })
+  const [colinha, setColinha] = useState(() => {
+    const saved = localStorage.getItem('corruptometro_colinha')
+    return saved ? JSON.parse(saved) : {
+      presidente: null, governador: null, senador1: null, senador2: null, depFederal: null, depEstadual: null
+    }
   })
 
-  const [colinha, setColinha] = useState({
-    presidente: null, governador: null, senador1: null, senador2: null, depFederal: null, depEstadual: null
+  // Persistence: Save to localStorage on change
+  useEffect(() => {
+    localStorage.setItem('corruptometro_inputs', JSON.stringify(inputs))
+  }, [inputs])
+  useEffect(() => {
+    localStorage.setItem('corruptometro_colinha', JSON.stringify(colinha))
+  }, [colinha])
+
+  // Track user session with persistence
+  const sessionId = useRef(() => {
+    let id = localStorage.getItem('corruptometro_session_id')
+    if (!id) {
+      id = crypto.randomUUID()
+      localStorage.setItem('corruptometro_session_id', id)
+    }
+    return id
   })
 
   const colinhaRef = useRef(null)
