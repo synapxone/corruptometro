@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"https://qnilklhhudxepluaogxz.supabase.co/rest/v1/politicians?select=count\" -H \"apikey: sb_publishable_gsItN8uAxoKqJd1CmyQGoA_CxFTInoT\" -H \"Authorization: Bearer sb_publishable_gsItN8uAxoKqJd1CmyQGoA_CxFTInoT\")",
+      "Bash(curl -s \"https://qnilklhhudxepluaogxz.supabase.co/rest/v1/politicians?select=count\" -H \"apikey: sb_publishable_gsItN8uAxoKqJd1CmyQGoA_CxFTInoT\" -H \"Authorization: Bearer sb_publishable_gsItN8uAxoKqJd1CmyQGoA_CxFTInoT\" -H \"Prefer: count=exact\" -I)",
+      "Bash(curl -s \"https://qnilklhhudxepluaogxz.supabase.co/rest/v1/politicians?limit=1\" -H \"apikey: sb_publishable_gsItN8uAxoKqJd1CmyQGoA_CxFTInoT\" -H \"Authorization: Bearer sb_publishable_gsItN8uAxoKqJd1CmyQGoA_CxFTInoT\")",
+      "Bash(curl -s --ssl-no-revoke \"https://qnilklhhudxepluaogxz.supabase.co/rest/v1/politicians?limit=2\" -H \"apikey: sb_publishable_gsItN8uAxoKqJd1CmyQGoA_CxFTInoT\" -H \"Authorization: Bearer sb_publishable_gsItN8uAxoKqJd1CmyQGoA_CxFTInoT\")"
+    ]
+  }
+}
