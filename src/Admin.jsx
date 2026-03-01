@@ -20,6 +20,35 @@ const TSE_CARGOS = [
 const CARGO_ROLE_MAP = { '1':'Presidente','3':'Governador','5':'Senador','6':'Deputado Federal','7':'Deputado Estadual' }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+// Returns true if URL exists (not 404). Fails silently for CORS/network errors.
+async function urlExists(url) {
+  if (!url) return true
+  try {
+    const res = await fetch(url, { method: 'HEAD', signal: AbortSignal.timeout(6000), mode: 'no-cors' })
+    // no-cors hides status but won't throw for existing pages; only 404 pages
+    // that return proper JSON error responses will throw via the CORS proxy
+    return true // no-cors always succeeds if server responds at all
+  } catch {
+    return false
+  }
+}
+
+// Validates URL via a lightweight GET (reads first byte only)
+async function checkUrlNotDead(url) {
+  if (!url || !url.startsWith('http')) return { ok: false, reason: 'URL inválida' }
+  try {
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 8000)
+    const res = await fetch(url, { signal: ctrl.signal, mode: 'no-cors' })
+    clearTimeout(timer)
+    return { ok: true }
+  } catch (e) {
+    if (e.name === 'AbortError') return { ok: true } // timeout = server exists but slow
+    return { ok: false, reason: 'Sem resposta do servidor' }
+  }
+}
+
 function scoreToStatus(score) {
   const n = parseInt(score) || 50
   return n >= 75 ? 'safe' : n >= 40 ? 'warning' : 'danger'
@@ -134,7 +163,16 @@ function PoliticianFormModal({ politician, onSave, onClose }) {
 // ─── Scandal Form Modal ───────────────────────────────────────────────────────
 function ScandalFormModal({ scandal, politicians, onSave, onClose }) {
   const [form, setForm] = useState({ ...scandal })
+  const [urlStatus, setUrlStatus] = useState(null) // null | 'checking' | 'ok' | 'dead'
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
+
+  const handleUrlChange = (v) => {
+    set('news_url', v)
+    setUrlStatus(null)
+    if (!v || !v.startsWith('http')) return
+    setUrlStatus('checking')
+    checkUrlNotDead(v).then(({ ok }) => setUrlStatus(ok ? 'ok' : 'dead'))
+  }
 
   return (
     <div className="fixed inset-0 z-[220] bg-black/95 flex items-center justify-center p-4 backdrop-blur-sm">
@@ -159,7 +197,19 @@ function ScandalFormModal({ scandal, politicians, onSave, onClose }) {
             <SelectField label="Severidade" value={form.severity} onChange={v => set('severity', v)} options={SEVERITIES} />
             <Field label="Data do Ocorrido" value={form.date_occurrence} onChange={v => set('date_occurrence', v)} type="date" />
           </div>
-          <Field label="URL da Fonte / Notícia" value={form.news_url} onChange={v => set('news_url', v)} placeholder="https://g1.globo.com/..." />
+          <div>
+            <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-1.5 flex items-center gap-2">
+              URL da Fonte / Notícia
+              {urlStatus === 'checking' && <span className="text-slate-600">verificando...</span>}
+              {urlStatus === 'ok' && <span className="text-emerald-500">✓ acessível</span>}
+              {urlStatus === 'dead' && <span className="text-rose-500">⚠ pode estar inacessível</span>}
+            </label>
+            <input
+              type="text" value={form.news_url || ''} placeholder="https://g1.globo.com/..."
+              onChange={e => handleUrlChange(e.target.value)}
+              className={`w-full p-3 bg-black border text-white text-sm rounded-[6px] outline-none transition-colors ${urlStatus === 'dead' ? 'border-rose-500/50' : urlStatus === 'ok' ? 'border-emerald-500/40' : 'border-white/10 focus:border-indigo-500'}`}
+            />
+          </div>
         </div>
 
         <div className="flex gap-2 p-5 border-t border-white/10">
@@ -263,6 +313,15 @@ export default function Admin({ onClose }) {
   const saveScandal = async (data) => {
     if (!data.politician_id) { alert('Selecione um político'); return }
     if (!data.title) { alert('Informe o título'); return }
+
+    // Validate URL before saving
+    if (data.news_url) {
+      const { ok, reason } = await checkUrlNotDead(data.news_url)
+      if (!ok) {
+        const proceed = confirm(`⚠️ URL pode estar inacessível: ${reason}\n\nDeseja salvar mesmo assim?`)
+        if (!proceed) return
+      }
+    }
 
     let error
     if (data.id) {

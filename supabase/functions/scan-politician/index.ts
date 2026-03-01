@@ -20,6 +20,23 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
+// Returns false only if server explicitly returns 404/410.
+// Other errors (timeout, network) = assume OK (server may have CORS restrictions).
+async function urlAlive(url: string): Promise<boolean> {
+  if (!url || !url.startsWith("http")) return false
+  try {
+    const res = await fetch(url, {
+      method: "HEAD",
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; CorruptometroBot/1.0)" },
+      signal: AbortSignal.timeout(8000),
+      redirect: "follow",
+    })
+    return res.status !== 404 && res.status !== 410 && res.status !== 451
+  } catch {
+    return true // network/timeout = assume alive
+  }
+}
+
 const cors = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -60,9 +77,17 @@ serve(async (req: Request) => {
   const scandals: Scandal[] = []
   const seen = new Set<string>() // dedup by URL
 
-  function addScandal(s: Scandal) {
+  async function addScandal(s: Scandal) {
     if (s.news_url && seen.has(s.news_url)) return
-    seen.add(s.news_url)
+    // Validate URL — skip if 404/410/dead
+    if (s.news_url) {
+      const alive = await urlAlive(s.news_url)
+      if (!alive) {
+        log.push(`⊘ URL descartada (404/morta): ${s.news_url.slice(0, 60)}`)
+        return
+      }
+      seen.add(s.news_url)
+    }
     scandals.push(s)
   }
 
@@ -93,7 +118,7 @@ serve(async (req: Request) => {
         const hits = data.hits?.hits || data.result || []
         for (const h of hits.slice(0, 10)) {
           const s = h._source || h
-          addScandal({
+          await addScandal({
             politician_id: politicianId,
             title: `STF — Ação Penal: ${s.numeroProcesso || s.numero || "s/n"}`,
             caption: s.ementa?.slice(0, 500) || "Processo criminal no Supremo Tribunal Federal.",
@@ -132,7 +157,7 @@ serve(async (req: Request) => {
           const data = await res.json()
           for (const r of (data.organic_results || []).slice(0, 5)) {
             if (!r.link) continue
-            addScandal({
+            await addScandal({
               politician_id: politicianId,
               title: r.title || "(sem título)",
               caption: r.snippet || "",
@@ -164,7 +189,7 @@ serve(async (req: Request) => {
           const data = await res.json()
           for (const a of (data.articles || []).slice(0, 10)) {
             if (!a.url || a.url.includes("newsapi.org")) continue
-            addScandal({
+            await addScandal({
               politician_id: politicianId,
               title: a.title || "(sem título)",
               caption: a.description || a.content?.slice(0, 400) || "",
@@ -197,7 +222,7 @@ serve(async (req: Request) => {
         if (res.ok) {
           const data = await res.json()
           for (const item of (data.items || []).slice(0, 5)) {
-            addScandal({
+            await addScandal({
               politician_id: politicianId,
               title: item.title,
               caption: item.snippet || "",
