@@ -18,7 +18,7 @@ const roleLabels = {
 // Helper para burlar bloqueio de imagem (CORS/Hotlink) de sites do governo
 const proxyImage = (url) => {
   if (!url) return null
-  if (url.includes('wsrv.nl') || url.includes('supabase.co')) return url
+  if (url.includes('wsrv.nl') || url.includes('supabase.co') || url.includes('divulgacandcontas.tse.jus.br')) return url
   try {
     // Normaliza para evitar double-encoding (ex: %25C3%25A1 em vez de %C3%A1)
     const normalized = decodeURIComponent(url)

@@ -27,7 +27,7 @@ const CARGO_ROLE_MAP = { '1': 'Presidente', '3': 'Governador', '5': 'Senador', '
 // Helper para burlar bloqueio de imagem (CORS/Hotlink) de sites do governo
 const proxyImage = (url) => {
   if (!url) return null
-  if (url.includes('wsrv.nl') || url.includes('supabase.co')) return url
+  if (url.includes('wsrv.nl') || url.includes('supabase.co') || url.includes('divulgacandcontas.tse.jus.br')) return url
   try {
     const normalized = decodeURIComponent(url)
     return `https://wsrv.nl/?url=${encodeURIComponent(normalized)}`
