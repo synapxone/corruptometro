@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Search, ShieldAlert, CheckCircle,
   ExternalLink, X, User, Loader2,
-  Trophy, Share2, ZoomIn
+  Trophy, Share2, ZoomIn, Menu
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { toPng } from 'html-to-image'
@@ -40,6 +40,7 @@ export default function App() {
   const [isSearching, setIsSearching] = useState(false)
   const [filterState, setFilterState] = useState('')
   const [activeTab, setActiveTab] = useState('lawsuits')
+  const [showSidebar, setShowSidebar] = useState(false)
 
   // Persistence: Load from localStorage or defaults
   const [inputs, setInputs] = useState(() => {
@@ -237,17 +238,47 @@ export default function App() {
   return (
     <div className="premium-bg min-h-screen pb-48 text-slate-200 overflow-x-hidden" style={{ backgroundColor: '#030609' }}>
 
-      {/* BRANDING */}
-      <nav className="p-6 text-center bg-black/80 border-b border-white/5 backdrop-blur-xl sticky top-0 z-50">
-        <div className="flex items-center justify-center gap-3 cursor-pointer select-none group" onClick={handleLogoClick}>
+      {/* BRANDING & NAV */}
+      <nav className="p-4 sm:p-6 flex items-center justify-between bg-black/80 border-b border-white/5 backdrop-blur-xl sticky top-0 z-50">
+        <button onClick={() => setShowSidebar(true)} className="text-slate-400 hover:text-white transition-colors cursor-pointer p-1">
+          <Menu size={24} />
+        </button>
+        <div className="flex items-center gap-3 cursor-pointer select-none group" onClick={handleLogoClick}>
           <div className="relative">
             <Trophy className="text-indigo-500 group-hover:scale-110 transition-transform" size={24} />
             <div className="absolute -top-1 -right-1 w-2 h-2 bg-rose-500 rounded-full animate-ping" />
           </div>
-          <h1 className="text-2xl font-black text-white italic tracking-tighter group-hover:text-indigo-400 transition-colors">CORRUPTÔMETRO</h1>
-          <div className="px-1.5 py-0.5 rounded-[4px] bg-rose-500/10 border border-rose-500/20 text-[7px] font-black text-rose-500 uppercase tracking-widest ml-1">LIVE</div>
+          <h1 className="text-xl sm:text-2xl font-black text-white italic tracking-tighter group-hover:text-indigo-400 transition-colors">CORRUPTÔMETRO</h1>
+          <div className="px-1.5 py-0.5 rounded-[4px] bg-rose-500/10 border border-rose-500/20 text-[7px] font-black text-rose-500 uppercase tracking-widest hidden sm:block">LIVE</div>
         </div>
+        <div className="w-6" /> {/* Placeholder helper */}
       </nav>
+
+      {/* SIDEBAR OVERLAY */}
+      {showSidebar && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm" onClick={() => setShowSidebar(false)}>
+          <div className="fixed top-0 left-0 bottom-0 w-64 bg-[#0a0d10] border-r border-white/5 flex flex-col animate-in slide-in-from-left duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-6 border-b border-white/5 mb-4">
+              <h2 className="text-sm font-black text-white uppercase tracking-widest flex items-center gap-2"><Menu size={16} /> Menu</h2>
+              <button onClick={() => setShowSidebar(false)} className="text-slate-500 hover:text-white p-1">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="flex flex-col gap-2 px-4">
+              <button onClick={() => { setShowAdmin(true); setShowSidebar(false); }} className="text-left p-3 rounded-[6px] text-xs font-black text-slate-400 hover:bg-white/5 hover:text-indigo-400 uppercase tracking-widest flex items-center gap-3 transition-colors">
+                <ShieldAlert size={16} /> Área Admin
+              </button>
+              <a href="https://github.com/synapxone/corruptometro" target="_blank" rel="noopener noreferrer" className="p-3 rounded-[6px] text-xs font-black text-slate-400 hover:bg-white/5 hover:text-indigo-400 uppercase tracking-widest flex items-center gap-3 transition-colors">
+                <ExternalLink size={16} /> GitHub do Projeto
+              </a>
+            </div>
+
+            <div className="mt-auto p-6 text-[10px] font-bold text-slate-600 uppercase tracking-widest border-t border-white/5">
+              Corruptômetro © {new Date().getFullYear()}
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-xl mx-auto px-4 py-8 space-y-12">
 
@@ -676,9 +707,21 @@ export default function App() {
                           <a key={i} href={s.news_url} target="_blank" rel="noopener noreferrer" className="block p-5 bg-black/40 border border-white/5 rounded-[6px] hover:border-white/20 hover:bg-black/60 transition-all group">
                             <div className="flex justify-between items-center mb-3">
                               <span className={`text-[7px] font-black uppercase px-2 py-1 rounded-[4px] shadow-lg ${cat.color}`}>{cat.label}</span>
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-3">
                                 <span className="text-[10px] text-slate-600 font-bold font-mono">{new Date(s.date_occurrence).toLocaleDateString('pt-BR')}</span>
-                                <ExternalLink size={12} className="text-slate-600 group-hover:text-indigo-400" />
+                                <button className="text-slate-500 hover:text-indigo-400 transition-colors" title="Compartilhar notícia" onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  if (navigator.share) {
+                                    navigator.share({ title: s.title, text: 'Veja esta notícia no Corruptômetro:', url: s.news_url }).catch(() => { });
+                                  } else {
+                                    navigator.clipboard.writeText(s.news_url);
+                                    alert('Link copiado!');
+                                  }
+                                }}>
+                                  <Share2 size={12} />
+                                </button>
+                                <ExternalLink size={12} className="text-slate-600 group-hover:text-indigo-400 transition-colors" />
                               </div>
                             </div>
                             <h4 className="text-white text-sm font-black leading-tight mb-2 uppercase tracking-tight group-hover:text-indigo-300 transition-colors">{s.title}</h4>
