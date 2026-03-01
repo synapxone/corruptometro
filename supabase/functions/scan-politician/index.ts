@@ -75,6 +75,38 @@ serve(async (req: Request) => {
       }
     }
 
+    // 1B. Fallback / Complemento de Votos via Imprensa (Senadores, Governadores, etc)
+    if (votes.length === 0) {
+      log.push(`ℹ️ Buscando votos reportados na imprensa local...`);
+      const qVotes = `"${name}" ("votou sim" OR "votou não" OR "votou a favor" OR "votou contra")`
+      const resVotes = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(qVotes)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`)
+      if (resVotes.ok) {
+        const items = (await resVotes.text()).match(/<item>([\s\S]*?)<\/item>/g) || []
+        for (const item of items.slice(0, 10)) {
+          const title = (item.match(/<title>([^<]*)<\/title>/)?.[1] || "").split(' - ')[0]
+          const link = item.match(/<link>([^<]*)<\/link>/)?.[1] || ""
+          const dateStr = item.match(/<pubDate>([^<]*)<\/pubDate>/)?.[1] || new Date().toISOString()
+          const tLower = title.toLowerCase();
+
+          let voteType = "NÃO IDENTIFICADO";
+          if (tLower.includes("votou sim") || tLower.includes("votou a favor") || tLower.includes("vota sim") || tLower.includes("vota a favor")) voteType = "SIM";
+          else if (tLower.includes("votou não") || tLower.includes("votou contra") || tLower.includes("vota não") || tLower.includes("vota contra") || tLower.includes("votou nao")) voteType = "NÃO";
+
+          if (voteType !== "NÃO IDENTIFICADO") {
+            votes.push({
+              politician_id: politicianId,
+              title: `VOTAÇÃO: ${title.length > 80 ? title.substring(0, 80) + '...' : title}`,
+              caption: `Voto: ${voteType} - Data: ${new Date(dateStr).toISOString().split('T')[0]}`,
+              news_url: link,
+              is_positive: true,
+              severity: "low",
+              date_occurrence: new Date(dateStr).toISOString().split('T')[0]
+            })
+          }
+        }
+      }
+    }
+
     // 2. NOTÍCIAS (+ Impostos / Lava-jato)
     const qNews = `"${name}" (corrupção OR propina OR desvio OR prisão OR investigado OR "aumento de impostos" OR "lava-jato" OR imposto OR impostos)`
     const resNews = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(qNews)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`)

@@ -812,29 +812,31 @@ export default function Admin({ onClose }) {
         {/* ── TAB: POLITICIANS ─────────────────────────────────────────────── */}
         {tab === 'politicians' && (
           <div className="space-y-3">
-            <div className="flex gap-2">
-              <div className="relative flex-1">
+            <div className="flex flex-col gap-2">
+              <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-700" size={14} />
                 <input value={searchPol} onChange={e => setSearchPol(e.target.value)}
                   className="w-full p-3 pl-9 bg-black border border-white/10 text-white text-sm rounded-[6px] outline-none focus:border-indigo-500"
                   placeholder="Buscar por nome, partido ou número..." />
               </div>
-              <select value={filterRole} onChange={e => setFilterRole(e.target.value)}
-                className="p-3 bg-black border border-white/10 text-slate-400 text-xs rounded-[6px] outline-none focus:border-indigo-500 appearance-none px-4">
-                <option value="">Todos os cargos</option>
-                {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
-              </select>
-              <button
-                onClick={handleScanAll}
-                disabled={scanAllActive || scanningId !== null}
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-xs font-black uppercase tracking-wider rounded-[6px] transition-all shrink-0">
-                <Globe size={14} /> {scanAllActive ? `${scanProgress.current}/${scanProgress.total}` : 'Escanear Todos'}
-              </button>
-              <button
-                onClick={() => setEditingPolitician(emptyPolitician())}
-                className="flex items-center gap-1.5 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider rounded-[6px] transition-all shrink-0">
-                <Plus size={14} /> Novo
-              </button>
+              <div className="flex gap-2">
+                <select value={filterRole} onChange={e => setFilterRole(e.target.value)}
+                  className="flex-1 p-3 bg-black border border-white/10 text-slate-400 text-xs rounded-[6px] outline-none focus:border-indigo-500 appearance-none px-3 min-w-0">
+                  <option value="">Todos os cargos</option>
+                  {ROLES.map(r => <option key={r} value={r}>{r}</option>)}
+                </select>
+                <button
+                  onClick={handleScanAll}
+                  disabled={scanAllActive || scanningId !== null}
+                  className="flex items-center gap-1.5 px-3 py-2.5 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white text-xs font-black uppercase tracking-wider rounded-[6px] transition-all shrink-0">
+                  <Globe size={14} /> {scanAllActive ? `${scanProgress.current}/${scanProgress.total}` : 'Escanear'}
+                </button>
+                <button
+                  onClick={() => setEditingPolitician(emptyPolitician())}
+                  className="flex items-center gap-1.5 px-3 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider rounded-[6px] transition-all shrink-0">
+                  <Plus size={14} /> Novo
+                </button>
+              </div>
             </div>
 
             {/* Bulk scan progress */}
@@ -872,7 +874,14 @@ export default function Admin({ onClose }) {
                               src={proxyImage(p.photo_url)}
                               referrerPolicy="no-referrer"
                               className="w-full h-full object-cover"
-                              onError={e => e.target.style.display = 'none'}
+                              onError={e => {
+                                if (!e.target.dataset.retried) {
+                                  e.target.dataset.retried = 'true'
+                                  e.target.src = p.photo_url
+                                } else {
+                                  e.target.style.display = 'none'
+                                }
+                              }}
                             />
                             : <div className="w-full h-full bg-slate-900" />
                           }
