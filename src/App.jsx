@@ -524,8 +524,8 @@ export default function App() {
                               <p className="text-white text-xs font-bold mb-2">{l.description}</p>
                               <div className="flex justify-between items-center mt-3">
                                 <div className="px-2 py-1 bg-white/5 rounded-[4px] text-[8px] font-black text-slate-400 uppercase tracking-widest border border-white/5">{l.status}</div>
-                                {l.url && (
-                                  <a href={l.url} target="_blank" rel="noopener noreferrer" className="text-[8px] text-indigo-400 font-black uppercase hover:underline flex items-center gap-1">
+                                {l.news_url && (
+                                  <a href={l.news_url} target="_blank" rel="noopener noreferrer" className="text-[8px] text-indigo-400 font-black uppercase hover:underline flex items-center gap-1">
                                     Ver Detalhes STF <ExternalLink size={8} />
                                   </a>
                                 )}
