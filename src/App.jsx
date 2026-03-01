@@ -136,6 +136,8 @@ export default function App() {
     setInputs(prev => ({ ...prev, [role]: String(p.candidate_number || '') }))
     setSearchingRole(null)
     setSearchQuery('')
+    setFilterState('')
+    setSearchResults([])
   }
 
   const removePolitician = (role) => {
@@ -147,10 +149,12 @@ export default function App() {
     if (!searchingRole) return
     setIsSearching(true)
     let dbRole = roleLabels[searchingRole].replace(/\s\d$/, '')
-    let query = supabase.from('politicians').select('*').eq('role', dbRole)
+    let query = supabase.from('politicians').select('*').ilike('role', dbRole)
     if (searchQuery) query = query.ilike('name', `%${searchQuery}%`)
     if (filterState && searchingRole !== 'presidente') query = query.eq('state', filterState)
-    const { data } = await query.limit(20)
+    const { data, error } = await query.limit(50)
+    if (error) console.error('[searchPoliticians] Supabase error:', error)
+    console.log(`[searchPoliticians] role="${dbRole}" → ${data?.length ?? 'null'} resultados`)
     setSearchResults(data || [])
     setIsSearching(false)
   }, [searchingRole, searchQuery, filterState])
@@ -330,7 +334,7 @@ export default function App() {
                               <ZoomIn size={12} />
                             </button>
                           )}
-                          <button onClick={() => setSearchingRole(key)} className="text-slate-500 hover:text-white p-2 hover:bg-white/5 rounded-[6px] transition-all"><Search size={16} /></button>
+                          <button onClick={() => { setSearchingRole(key); setSearchQuery(''); setFilterState(''); setSearchResults([]); }} className="text-slate-500 hover:text-white p-2 hover:bg-white/5 rounded-[6px] transition-all"><Search size={16} /></button>
                         </div>
                       </div>
                       <div className="flex gap-2 items-center overflow-hidden">
@@ -431,7 +435,7 @@ export default function App() {
                 <h2 className="text-2xl font-black text-white tracking-tighter uppercase">Buscar {roleLabels[searchingRole]}</h2>
                 <div className="h-1 w-12 bg-indigo-500 mt-1"></div>
               </div>
-              <button onClick={() => setSearchingRole(null)} className="p-3 bg-white/5 hover:bg-rose-500 hover:text-white text-slate-400 rounded-[6px] transition-all"><X size={20} /></button>
+              <button onClick={() => { setSearchingRole(null); setSearchQuery(''); setFilterState(''); setSearchResults([]); }} className="p-3 bg-white/5 hover:bg-rose-500 hover:text-white text-slate-400 rounded-[6px] transition-all"><X size={20} /></button>
             </header>
             <div className="space-y-4 mb-8">
               <div className="relative group">

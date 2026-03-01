@@ -1,10 +1,11 @@
 /**
  * scan-politician — Supabase Edge Function
  * 
- * V32: MOTOR TRANSPARÊNCIA TOTAL (VOTOS + PROJETOS + CRIMES)
+ * V36: LIMITES AUMENTADOS (150 Notícias, 20 YT) + FILTROS
  * - Categorias: CONDENAÇÃO (Regex), INVESTIGAÇÃO, MENÇÃO.
- * - Módulo VOTOS: Busca histórico de votações na API da Câmara (Dados Abertos).
- * - Módulo PROJETOS: Captura projetos de lei de autoria (PLs).
+ * - Módulo VOTOS: via API da Câmara.
+ * - Módulo PROJETOS: via Google News.
+ * - Módulo VÍDEOS: via YouTube.
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
@@ -25,7 +26,7 @@ const getCondenacaoRegex = (name: string) => {
   return new RegExp(`(${name}|${firstName}\\s+${lastName})\\s+(é|foi|será|está|vai|deve|é|preso|levado|recolhido)\\s+(preso|prisão|cela|cadeia|xadrez)`, "i");
 }
 
-const INVESTIGACAO_KEYWORDS = ["investigado", "indiciado", "réu", "acusado", "alvo de operação", "buscas", "inquérito", "citado", "delação", "pf", "ministério público", "mpf"]
+const INVESTIGACAO_KEYWORDS = ["investigado", "indiciado", "réu", "acusado", "alvo de operação", "buscas", "inquérito", "citado", "delação", "pf", "ministério público", "mpf", "lava-jato", "lava jato", "operaçāo"]
 
 async function getChamberId(name: string) {
   try {
@@ -39,7 +40,7 @@ async function getVotes(chamberId: number) {
   try {
     const res = await fetch(`https://dadosabertos.camara.leg.br/api/v2/deputados/${chamberId}/votacoes?ordem=DESC&ordenarPor=dataHoraRegistro`);
     const data = await res.json();
-    return (data.dados || []).slice(0, 10);
+    return (data.dados || []).slice(0, 15); // Aumentado limite de votos
   } catch { return []; }
 }
 
@@ -53,7 +54,7 @@ serve(async (req: Request) => {
 
   try {
     const { name, politicianId, saveToDb = false } = await req.json()
-    log.push(`[SCAN-V32.1] Transparência Legislativa para: ${name}`)
+    log.push(`[SCAN-V36] Transparência Total e Limites Aumentados para: ${name}`)
     const db = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!)
 
     // 1. VOTOS
@@ -74,30 +75,43 @@ serve(async (req: Request) => {
       }
     }
 
-    // 2. NOTÍCIAS
-    const qNews = `"${name}" (corrupção OR propina OR desvio OR prisão OR investigado)`
+    // 2. NOTÍCIAS (+ Impostos / Lava-jato)
+    const qNews = `"${name}" (corrupção OR propina OR desvio OR prisão OR investigado OR "aumento de impostos" OR "lava-jato" OR imposto OR impostos)`
     const resNews = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(qNews)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`)
     if (resNews.ok) {
       const text = await resNews.text()
       const items = text.match(/<item>([\s\S]*?)<\/item>/g) || []
       const condenacaoRegex = getCondenacaoRegex(name);
-      for (const item of items.slice(0, 80)) {
+      for (const item of items.slice(0, 150)) { // Limite aumentado para 150
         const title = (item.match(/<title>([^<]*)<\/title>/)?.[1] || "").split(' - ')[0]
         const link = item.match(/<link>([^<]*)<\/link>/)?.[1] || ""
-        const dateStr = item.match(/<pubDate>([^<]*)<\/pubDate>/)?.[1] || ""
+        const dateStr = item.match(/<pubDate>([^<]*)<\/pubDate>/)?.[1] || new Date().toISOString()
 
         let severity: "critical" | "high" | "medium" | "ignore" = "ignore";
         let caption = "";
 
         if (condenacaoRegex.test(title)) { severity = "critical"; caption = "Prisão ou condenação direta."; }
         else if (INVESTIGACAO_KEYWORDS.some(k => title.toLowerCase().includes(k))) { severity = "high"; caption = "Alvo de investigação oficial."; }
-        else { severity = "medium"; caption = "Citação em contexto público."; }
+        else { severity = "medium"; caption = "Citação em imprensa / Mídia."; }
 
         scandals.push({ politician_id: politicianId, title, news_url: link, severity, caption, is_positive: false, date_occurrence: new Date(dateStr).toISOString().split('T')[0] })
       }
     }
 
-    // 3. PROJETOS
+    // 3. YOUTUBE VIDEOS (Novo Modulo Exclusivo YT)
+    const qYt = `"${name}" (corrupção OR desvio OR investigado OR "lava-jato" OR propina) youtube`
+    const resYt = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(qYt)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`)
+    if (resYt.ok) {
+      const items = (await resYt.text()).match(/<item>([\s\S]*?)<\/item>/g) || []
+      for (const item of items.slice(0, 20)) { // Limite para 20 videos YT
+        const title = (item.match(/<title>([^<]*)<\/title>/)?.[1] || "").split(' - ')[0]
+        const link = item.match(/<link>([^<]*)<\/link>/)?.[1] || ""
+        const dateStr = item.match(/<pubDate>([^<]*)<\/pubDate>/)?.[1] || new Date().toISOString()
+        scandals.push({ politician_id: politicianId, title, news_url: link, is_positive: false, severity: "medium", caption: "📹 Vídeo Localizado no YouTube", date_occurrence: new Date(dateStr).toISOString().split('T')[0] })
+      }
+    }
+
+    // 4. PROJETOS
     const qProj = `"${name}" (Projeto de Lei OR PL) site:camara.leg.br OR site:senado.leg.br`
     const resProj = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(qProj)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`)
     if (resProj.ok) {
@@ -116,12 +130,31 @@ serve(async (req: Request) => {
     rawFinal.forEach(s => uniqueMap.set(s.news_url, s));
     const finalResult = Array.from(uniqueMap.values());
 
-    if (saveToDb && politicianId && finalResult.length > 0) {
-      const { data: ext } = await db.from("scandals").select("news_url").eq("politician_id", politicianId)
-      const links = new Set((ext || []).map((s: any) => s.news_url))
-      const uni = finalResult.filter((s: any) => !links.has(s.news_url))
-      if (uni.length > 0) await db.from("scandals").insert(uni)
-      log.push(`✓ Sincronizado: ${uni.length} novos registros.`);
+    if (saveToDb && politicianId) {
+      // Atualiza score baseado na qtd de negativos
+      const negativeRecords = finalResult.filter(s => !s.is_positive).length;
+      let pScore = 100;
+      if (negativeRecords <= 5) pScore = 100 - (negativeRecords * 5); // 75-100
+      else if (negativeRecords <= 15) pScore = Math.max(50, 75 - ((negativeRecords - 5) * 2.5)); // 50-72.5
+      else if (negativeRecords <= 25) pScore = Math.max(25, 50 - ((negativeRecords - 15) * 2.5)); // 25-47.5
+      else pScore = Math.max(0, 25 - ((negativeRecords - 25))); // 0-24
+      pScore = Math.round(pScore);
+
+      // CUIDADO: Status string precisa bater com o frontend e os badges.
+      let status = 'safe';
+      if (pScore < 25) status = 'critical';
+      else if (pScore < 50) status = 'danger';
+      else if (pScore < 75) status = 'warning';
+
+      await db.from('politicians').update({ score: pScore, status }).eq('id', politicianId);
+
+      if (finalResult.length > 0) {
+        const { data: ext } = await db.from("scandals").select("news_url").eq("politician_id", politicianId)
+        const links = new Set((ext || []).map((s: any) => s.news_url))
+        const uni = finalResult.filter((s: any) => !links.has(s.news_url))
+        if (uni.length > 0) await db.from("scandals").insert(uni)
+        log.push(`✓ Sincronizado: ${uni.length} novos registros. | Placar Recalculado: ${pScore}/100.`);
+      }
     }
 
     return new Response(JSON.stringify({ scandals: finalResult, lawsuits, log }), { headers: { ...cors, "Content-Type": "application/json" } })

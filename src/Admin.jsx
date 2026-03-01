@@ -30,9 +30,9 @@ const proxyImage = (url) => {
   if (url.includes('wsrv.nl')) return url
   try {
     const normalized = decodeURIComponent(url)
-    return `https://wsrv.nl/?url=${encodeURIComponent(normalized)}&default=identicon`
+    return `https://wsrv.nl/?url=${encodeURIComponent(normalized)}`
   } catch (e) {
-    return `https://wsrv.nl/?url=${encodeURIComponent(url)}&default=identicon`
+    return `https://wsrv.nl/?url=${encodeURIComponent(url)}`
   }
 }
 
@@ -301,6 +301,38 @@ export default function Admin({ onClose }) {
   const [scanProgress, setScanProgress] = useState({ current: 0, total: 0 })
   const [scanLogs, setScanLogs] = useState({}) // { [politicianId]: string[] }
 
+  // ── Undo Delete ──────────────────────────────────────────────────────────────
+  // pendingDelete = { type, label, backup, executeDelete: async fn }
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const [countdown, setCountdown] = useState(5)
+  const deleteTimerRef = useRef(null)
+  const countdownRef = useRef(null)
+
+  const clearDeleteTimers = () => {
+    if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current)
+    if (countdownRef.current) clearInterval(countdownRef.current)
+  }
+
+  const startPendingDelete = (item) => {
+    clearDeleteTimers()
+    setPendingDelete(item)
+    setCountdown(5)
+    countdownRef.current = setInterval(() => {
+      setCountdown(prev => (prev <= 1 ? (clearInterval(countdownRef.current), 0) : prev - 1))
+    }, 1000)
+    deleteTimerRef.current = setTimeout(async () => {
+      await item.executeDelete()
+      setPendingDelete(null)
+    }, 5000)
+  }
+
+  const undoDelete = () => {
+    if (!pendingDelete) return
+    clearDeleteTimers()
+    pendingDelete.restore()
+    setPendingDelete(null)
+  }
+
   // ── Auth ────────────────────────────────────────────────────────────────────
   const handleLogin = (e) => {
     e.preventDefault()
@@ -346,13 +378,22 @@ export default function Admin({ onClose }) {
     loadData()
   }
 
-  const deletePolitician = async (id, name) => {
-    if (!confirm(`Excluir "${name}" e todos os seus escândalos?`)) return
-    const { error: e1 } = await supabase.from('scandals').delete().eq('politician_id', id)
-    if (e1) { alert('Erro ao excluir escândalos: ' + e1.message); return }
-    const { error: e2 } = await supabase.from('politicians').delete().eq('id', id)
-    if (e2) { alert('Erro ao excluir político: ' + e2.message); return }
-    loadData()
+  const deletePolitician = (id, name) => {
+    const backup = politicians.find(p => p.id === id)
+    // Optimistic removal
+    setPoliticians(prev => prev.filter(p => p.id !== id))
+    if (expandedPolitician === id) { setExpandedPolitician(null); setExpandedScandals([]) }
+    startPendingDelete({
+      label: name,
+      restore: () => {
+        setPoliticians(prev => [...prev, backup].sort((a, b) => a.name.localeCompare(b.name)))
+      },
+      executeDelete: async () => {
+        await supabase.from('scandals').delete().eq('politician_id', id)
+        await supabase.from('politicians').delete().eq('id', id)
+        loadData()
+      }
+    })
   }
 
   // ── Scandals CRUD ───────────────────────────────────────────────────────────
@@ -385,40 +426,45 @@ export default function Admin({ onClose }) {
     recalcScore(data.politician_id)
   }
 
-  const deleteScandal = async (id, politicianId, title) => {
-    if (!confirm(`Excluir escândalo "${title}"?`)) return
-    const { error } = await supabase.from('scandals').delete().eq('id', id)
-    if (error) { alert('Erro ao excluir: ' + error.message); return }
-
-    // Atualiza o estado local imediatamente
+  const deleteScandal = (id, politicianId, title) => {
+    const backup = expandedScandals.find(s => s.id === id)
+    // Optimistic removal
     setExpandedScandals(prev => prev.filter(s => s.id !== id))
     setScandals(prev => prev.filter(s => s.id !== id))
-
-    loadData()
-    recalcScore(politicianId)
+    startPendingDelete({
+      label: title,
+      restore: () => {
+        if (backup) {
+          setExpandedScandals(prev => [...prev, backup].sort((a, b) => new Date(b.date_occurrence) - new Date(a.date_occurrence)))
+          setScandals(prev => [...prev, backup])
+        }
+      },
+      executeDelete: async () => {
+        await supabase.from('scandals').delete().eq('id', id)
+        loadData()
+        recalcScore(politicianId)
+      }
+    })
   }
 
-  const deleteAllScandals = async (politicianId, politicianName) => {
-    if (!confirm(`Deseja realmente apagar TODOS os registros (notícias e processos) de "${politicianName}"? Esta ação não pode ser desfeita.`)) return
-
-    // Deletar escândalos
-    const { error: errS } = await supabase.from('scandals').delete().eq('politician_id', politicianId)
-    // Deletar processos
-    const { error: errL } = await supabase.from('lawsuits').delete().eq('politician_id', politicianId)
-
-    if (errS || errL) {
-      alert('Erro ao limpar registros: ' + (errS?.message || errL?.message))
-      return
-    }
-
-    // Atualiza o estado local imediatamente
-    if (expandedPolitician === politicianId) {
-      setExpandedScandals([])
-    }
+  const deleteAllScandals = (politicianId, politicianName) => {
+    const scandalsBackup = [...expandedScandals]
+    // Optimistic removal
+    setExpandedScandals([])
     setScandals(prev => prev.filter(s => s.politician_id !== politicianId))
-
-    loadData()
-    recalcScore(politicianId)
+    startPendingDelete({
+      label: `Todos os registros de "${politicianName}"`,
+      restore: () => {
+        setExpandedScandals(scandalsBackup)
+        setScandals(prev => [...scandalsBackup, ...prev.filter(s => s.politician_id !== politicianId)])
+      },
+      executeDelete: async () => {
+        await supabase.from('scandals').delete().eq('politician_id', politicianId)
+        await supabase.from('lawsuits').delete().eq('politician_id', politicianId)
+        loadData()
+        recalcScore(politicianId)
+      }
+    })
   }
 
   const recalcScore = async (politicianId) => {
@@ -1016,6 +1062,35 @@ export default function Admin({ onClose }) {
           onSave={saveScandal}
           onClose={() => setEditingScandal(null)}
         />
+      )}
+
+      {/* ── TOAST UNDO ─────────────────────────────────────────────────────── */}
+      {pendingDelete && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[300] animate-in slide-in-from-bottom-4 duration-300">
+          <div className="flex items-center gap-4 bg-slate-900 border border-white/20 rounded-[8px] px-5 py-4 shadow-2xl min-w-[300px] max-w-[90vw]">
+            <div className="flex-1 min-w-0">
+              <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Excluído</div>
+              <div className="text-[12px] font-black text-white truncate">{pendingDelete.label}</div>
+            </div>
+            {/* Countdown circle */}
+            <div className="relative w-9 h-9 shrink-0">
+              <svg className="w-9 h-9 -rotate-90" viewBox="0 0 36 36">
+                <circle cx="18" cy="18" r="14" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
+                <circle cx="18" cy="18" r="14" fill="none" stroke="#6366f1" strokeWidth="3"
+                  strokeDasharray={`${(countdown / 5) * 87.96} 87.96`}
+                  className="transition-all duration-1000 ease-linear"
+                />
+              </svg>
+              <span className="absolute inset-0 flex items-center justify-center text-[11px] font-black text-indigo-400">{countdown}</span>
+            </div>
+            <button
+              onClick={undoDelete}
+              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white text-[10px] font-black uppercase tracking-widest rounded-[6px] transition-all shrink-0 whitespace-nowrap"
+            >
+              Desfazer
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
