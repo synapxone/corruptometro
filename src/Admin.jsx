@@ -336,8 +336,10 @@ export default function Admin({ onClose }) {
 
   const deletePolitician = async (id, name) => {
     if (!confirm(`Excluir "${name}" e todos os seus escândalos?`)) return
-    await supabase.from('scandals').delete().eq('politician_id', id)
-    await supabase.from('politicians').delete().eq('id', id)
+    const { error: e1 } = await supabase.from('scandals').delete().eq('politician_id', id)
+    if (e1) { alert('Erro ao excluir escândalos: ' + e1.message); return }
+    const { error: e2 } = await supabase.from('politicians').delete().eq('id', id)
+    if (e2) { alert('Erro ao excluir político: ' + e2.message); return }
     loadData()
   }
 
@@ -373,7 +375,16 @@ export default function Admin({ onClose }) {
 
   const deleteScandal = async (id, politicianId, title) => {
     if (!confirm(`Excluir escândalo "${title}"?`)) return
-    await supabase.from('scandals').delete().eq('id', id)
+    const { error } = await supabase.from('scandals').delete().eq('id', id)
+    if (error) { alert('Erro ao excluir: ' + error.message); return }
+    loadData()
+    recalcScore(politicianId)
+  }
+
+  const deleteAllScandals = async (politicianId, politicianName) => {
+    if (!confirm(`Deseja realmente apagar TODOS os escândalos de "${politicianName}"? Esta ação não pode ser desfeita.`)) return
+    const { error } = await supabase.from('scandals').delete().eq('politician_id', politicianId)
+    if (error) { alert('Erro ao limpar escândalos: ' + error.message); return }
     loadData()
     recalcScore(politicianId)
   }
@@ -728,8 +739,14 @@ export default function Admin({ onClose }) {
                               </button>
                               <button
                                 onClick={() => setEditingScandal({ ...emptyScandal(), politician_id: p.id })}
-                                className="flex items-center gap-1 px-2.5 py-1 bg-rose-600/20 hover:bg-rose-600 text-rose-500 hover:text-white text-[9px] font-black uppercase rounded-[4px] transition-all">
+                                className="flex items-center gap-1 px-2.5 py-1 bg-indigo-600/20 hover:bg-indigo-600 text-indigo-400 hover:text-white text-[9px] font-black uppercase rounded-[4px] transition-all">
                                 <Plus size={10} /> Adicionar
+                              </button>
+                              <button
+                                onClick={() => deleteAllScandals(p.id, p.name)}
+                                disabled={expandedScandals.length === 0}
+                                className="flex items-center gap-1 px-2.5 py-1 bg-red-600/20 hover:bg-red-600 text-red-500 hover:text-white text-[9px] font-black uppercase rounded-[4px] disabled:opacity-30 transition-all">
+                                <Trash2 size={10} /> Limpar Tudo
                               </button>
                             </div>
                           </div>
