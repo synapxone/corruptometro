@@ -2,8 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Search, ShieldAlert, CheckCircle,
   ExternalLink, X, User, Loader2,
-  Trophy, Share2, ZoomIn, Scale,
-  ChevronUp, ChevronDown
+  Trophy, Share2, ZoomIn
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { toPng } from 'html-to-image'
@@ -36,19 +35,11 @@ export default function App() {
   const [loadingScandals, setLoadingScandals] = useState(false)
 
   const [searchingRole, setSearchingRole] = useState(null)
-  const [searchFocused, setSearchFocused] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [isSearching, setIsSearching] = useState(false)
   const [filterState, setFilterState] = useState('')
-  const [showColinha, setShowColinha] = useState(false)
   const [activeTab, setActiveTab] = useState('lawsuits')
-  const [isMaximized, setIsMaximized] = useState(false)
-  const [scanLogs, setScanLogs] = useState([])
-
-  // Modal display states
-  const [expandedSections, setExpandedSections] = useState({ lawsuits: true, scandals: true })
-  const [visibleCounts, setVisibleCounts] = useState({ lawsuits: 20, scandals: 20 })
 
   // Persistence: Load from localStorage or defaults
   const [inputs, setInputs] = useState(() => {
@@ -171,24 +162,19 @@ export default function App() {
 
   useEffect(() => {
     if (!selectedPolitician) return
-    let isMounted = true
-
-    // Reset view states for new selection
-    setExpandedSections({ lawsuits: true, scandals: true })
-    setVisibleCounts({ lawsuits: 20, scandals: 20 })
 
     const fetchData = async () => {
       setLoadingScandals(true)
       setScandals([])
       setLawsuits([])
 
-      const { data: scans, error: scansError } = await supabase
+      const { data: scans } = await supabase
         .from('scandals')
         .select('*')
         .eq('politician_id', selectedPolitician.id)
         .order('date_occurrence', { ascending: false })
 
-      const { data: laws, error: lawsError } = await supabase
+      const { data: laws } = await supabase
         .from('lawsuits')
         .select('*')
         .eq('politician_id', selectedPolitician.id)
@@ -362,18 +348,28 @@ export default function App() {
                                   <img
                                     src={proxyImage(p.photo_url)}
                                     referrerPolicy="no-referrer"
-                                    className="w-full h-full object-cover absolute inset-0"
+                                    className="w-full h-full object-cover absolute inset-0 transition-opacity duration-300"
                                     onError={e => {
-                                      e.target.style.display = 'none';
-                                      const fallback = e.currentTarget.parentElement.querySelector('.fallback-icon');
-                                      if (fallback) fallback.style.display = 'block';
+                                      if (!e.target.dataset.retried) {
+                                        e.target.dataset.retried = 'true';
+                                        e.target.src = p.photo_url; // tenta carregar a imagem real direto
+                                      } else {
+                                        e.target.style.display = 'none';
+                                        const fallback = e.currentTarget.parentElement.querySelector('.fallback-icon');
+                                        if (fallback) fallback.style.display = 'block';
+                                      }
                                     }}
                                   />
                                 )}
                                 <User className="w-full h-full p-2 text-slate-800 absolute inset-0 fallback-icon" style={{ display: p.photo_url ? 'none' : 'block' }} />
                               </div>
                               <div className="flex-1 min-w-0 overflow-hidden">
-                                <div className="text-[11px] font-black text-white truncate uppercase tracking-tight mb-0.5">{p.name}</div>
+                                <button
+                                  onClick={() => setSelectedPolitician(p)}
+                                  className="text-[11px] font-black text-white hover:text-indigo-400 hover:underline truncate uppercase tracking-tight mb-0.5 text-left w-full cursor-pointer"
+                                >
+                                  {p.name}
+                                </button>
                                 <div className="flex items-center gap-1 min-w-0 overflow-hidden">
                                   <div className="text-[8px] text-slate-500 font-bold uppercase tracking-wider truncate min-w-0">{p.party}{p.state && ` • ${p.state}`}</div>
                                   <div className="flex-1 h-1 bg-black/40 rounded-full overflow-hidden border border-white/5 shrink-0 w-8">
@@ -488,103 +484,98 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL DOSSIER ( Lupinha Preview ) */}
+      {/* MODAL DOSSIER */}
       {selectedPolitician && (
-        <div className="fixed inset-0 z-[110] flex items-center justify-center p-2 sm:p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className={`${isMaximized ? 'w-full max-w-4xl h-[95vh]' : 'w-full max-w-lg h-[90vh] sm:h-[85vh]'} bg-[#0a0d10] rounded-[6px] border border-white/20 overflow-hidden flex flex-col shadow-2xl relative transition-all duration-500`}>
-            <div className={`absolute top-0 inset-x-0 h-1 ${getStatusBg(selectedPolitician.score)}`} />
+        <div className="fixed inset-0 z-[110] flex items-end sm:items-center justify-center sm:p-4 bg-black/90 backdrop-blur-sm animate-in fade-in duration-300">
+          <div className="w-full sm:max-w-lg bg-[#0a0d10] rounded-t-2xl sm:rounded-[6px] border-t border-x sm:border border-white/20 flex flex-col shadow-2xl overflow-hidden" style={{ height: '92dvh', maxHeight: '92dvh' }}>
+            <div className={`h-1 shrink-0 ${getStatusBg(selectedPolitician.score)}`} />
 
-            <div className="p-8 text-center bg-black/40 border-b border-white/5 relative">
-              <header className="absolute top-6 right-6 flex items-center gap-2">
-                <button
-                  onClick={() => setIsMaximized(!isMaximized)}
-                  className="hidden sm:flex p-2 bg-white/5 hover:bg-white/10 text-slate-400 rounded-[6px] transition-all"
-                  title={isMaximized ? "Minimizar" : "Maximizar"}
-                >
-                  {isMaximized ? <X size={18} className="rotate-45" /> : <ZoomIn size={18} />}
-                </button>
-                <button onClick={() => { setSelectedPolitician(null); setIsMaximized(false); }} className="p-2 bg-white/5 hover:bg-rose-500 rounded-[6px] transition-all">
-                  <X size={18} />
-                </button>
-              </header>
-              <div className="relative inline-block">
-                <div className="w-24 h-24 rounded-[6px] mx-auto mb-4 shadow-2xl border-2 border-indigo-500 overflow-hidden bg-slate-900 relative">
-                  {selectedPolitician.photo_url && (
-                    <img
-                      src={proxyImage(selectedPolitician.photo_url)}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover absolute inset-0"
-                      alt={selectedPolitician.name}
-                      onError={e => {
-                        e.target.style.display = 'none';
-                        const fallback = e.currentTarget.parentElement.querySelector('.fallback-icon');
-                        if (fallback) fallback.style.display = 'block';
-                      }}
-                    />
-                  )}
-                  <User className="w-full h-full p-4 text-slate-700 absolute inset-0 fallback-icon" style={{ display: selectedPolitician.photo_url ? 'none' : 'block' }} />
-                </div>
-                <div className={`absolute -bottom-1 -right-1 w-8 h-8 rounded-full border-4 border-black flex items-center justify-center text-[12px] font-black text-black shadow-xl ${getStatusBg(selectedPolitician.score)}`}>
-                  {selectedPolitician.score}
-                </div>
+            {/* COMPACT BAR — sempre visível no topo */}
+            <div className="flex items-center gap-3 px-4 py-3 bg-black/70 border-b border-white/5 shrink-0 backdrop-blur-md">
+              <div className="w-9 h-9 rounded-[4px] overflow-hidden bg-slate-900 shrink-0 border border-white/10 relative">
+                {selectedPolitician.photo_url && (
+                  <img src={proxyImage(selectedPolitician.photo_url)} referrerPolicy="no-referrer" className="w-full h-full object-cover absolute inset-0"
+                    onError={e => { e.target.style.display = 'none' }} />
+                )}
+                <User className="w-full h-full p-2 text-slate-700 absolute inset-0" />
               </div>
-              <h2 className="text-3xl font-black text-white uppercase tracking-tighter mb-1">{selectedPolitician.name}</h2>
-              <div className="flex justify-center gap-2 mb-4">
-                <span className="px-3 py-1 bg-white/5 rounded-[4px] text-[10px] font-black text-slate-400 uppercase tracking-widest border border-white/5">{selectedPolitician.party}</span>
-                <span className="px-3 py-1 bg-white/5 rounded-[4px] text-[10px] font-black text-slate-400 uppercase tracking-widest border border-white/5">{selectedPolitician.role}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-[11px] font-black text-white truncate uppercase tracking-tight">{selectedPolitician.name}</div>
+                <div className="text-[9px] text-slate-500 font-bold uppercase tracking-wider truncate">{selectedPolitician.party}{selectedPolitician.role && ` · ${selectedPolitician.role}`}</div>
+              </div>
+              <div className={`w-9 h-9 rounded-full border-2 border-black flex items-center justify-center text-[11px] font-black text-black shrink-0 ${getStatusBg(selectedPolitician.score)}`}>
+                {selectedPolitician.score}
+              </div>
+              <button onClick={() => setSelectedPolitician(null)} className="p-2 bg-white/5 hover:bg-rose-500 rounded-[6px] transition-all shrink-0">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* ÁREA DE SCROLL ÚNICA */}
+            <div className="flex-1 overflow-y-auto custom-scroll">
+
+              {/* HERO — rola e some */}
+              <div className="px-6 pt-8 pb-6 text-center bg-black/30 border-b border-white/5">
+                <div className="relative inline-block mb-4">
+                  <div className="w-20 h-20 rounded-[6px] mx-auto shadow-2xl border-2 border-indigo-500 overflow-hidden bg-slate-900 relative">
+                    {selectedPolitician.photo_url && (
+                      <img src={proxyImage(selectedPolitician.photo_url)} referrerPolicy="no-referrer"
+                        className="w-full h-full object-cover absolute inset-0" alt={selectedPolitician.name}
+                        onError={e => { e.target.style.display = 'none'; const f = e.currentTarget.parentElement.querySelector('.fallback-icon'); if (f) f.style.display = 'block'; }} />
+                    )}
+                    <User className="w-full h-full p-4 text-slate-700 absolute inset-0 fallback-icon" style={{ display: selectedPolitician.photo_url ? 'none' : 'block' }} />
+                  </div>
+                </div>
+                <h2 className="text-2xl font-black text-white uppercase tracking-tighter mb-3">{selectedPolitician.name}</h2>
+                {(() => {
+                  const total = scandals.length + lawsuits.length
+                  const getAlertColor = () => {
+                    if (total <= 5) return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
+                    if (total <= 15) return 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                    if (total <= 25) return 'bg-orange-500/10 border-orange-500/20 text-orange-400'
+                    return 'bg-rose-500/10 border-rose-500/20 text-rose-400'
+                  }
+                  if (total === 0) return (
+                    <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-[6px] p-3 max-w-[280px] mx-auto">
+                      <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Nenhum registro público localizado</p>
+                    </div>
+                  )
+                  return (
+                    <div className={`${getAlertColor()} border rounded-[6px] p-3 max-w-[280px] mx-auto`}>
+                      <p className="text-[9px] font-black uppercase tracking-widest">{total} registros vinculados ao histórico</p>
+                    </div>
+                  )
+                })()}
               </div>
 
-              {(() => {
-                const total = scandals.length + lawsuits.length
-                const getAlertColor = () => {
-                  if (total <= 5) return 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400'
-                  if (total <= 15) return 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                  if (total <= 25) return 'bg-orange-500/10 border-orange-500/20 text-orange-400'
-                  return 'bg-rose-500/10 border-rose-500/20 text-rose-400'
-                }
-
-                if (total === 0) return (
-                  <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-[6px] p-3 max-w-[280px] mx-auto animate-in zoom-in duration-300">
-                    <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest leading-relaxed">Nenhum registro público localizado</p>
-                  </div>
-                )
-
-                return (
-                  <div className={`${getAlertColor()} border rounded-[6px] p-3 max-w-[280px] mx-auto animate-in zoom-in duration-300`}>
-                    <p className="text-[9px] font-black uppercase tracking-widest leading-relaxed">
-                      Este candidato possui {total} registros vinculados ao seu histórico
-                    </p>
-                  </div>
-                )
-              })()}
-
-              {/* ABAS (Novidade V33) */}
+              {/* ABAS — sticky dentro do scroll */}
               {!loadingScandals && (
-                <div className="flex gap-1 mt-6 bg-black/40 p-1 rounded-[6px] border border-white/5 overflow-x-auto custom-scroll no-scrollbar">
-                  {[
-                    { id: 'lawsuits', label: '⚖️ Jurídico', show: lawsuits.length > 0 },
-                    { id: 'projects', label: '🏆 Projetos', show: scandals.some(s => s.is_positive && !s.title.includes('VOTAÇÃO:')) },
-                    { id: 'votes', label: '🗳️ Votos', show: selectedPolitician.role !== 'Presidente' && scandals.some(s => s.is_positive && s.title.includes('VOTAÇÃO:')) },
-                    { id: 'noticias', label: '📰 Notícias', show: scandals.some(s => !s.is_positive) }
-                  ].filter(t => t.show).map(tab => (
-                    <button
-                      key={tab.id}
-                      onClick={() => setActiveTab(tab.id)}
-                      className={`flex-1 min-w-[80px] py-2 px-3 text-[9px] font-black uppercase tracking-widest rounded-[4px] transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
-                    >
-                      {tab.label}
-                    </button>
-                  ))}
+                <div className="sticky top-0 z-10 bg-[#0a0d10]/95 backdrop-blur-sm border-b border-white/5 px-3 py-2 shrink-0">
+                  <div className="flex gap-1 bg-black/60 p-1 rounded-[6px] border border-white/5 overflow-x-auto no-scrollbar">
+                    {[
+                      { id: 'lawsuits', label: '⚖️ Jurídico', show: lawsuits.length > 0 },
+                      { id: 'projects', label: '🏆 Projetos', show: scandals.some(s => s.is_positive && !s.title.includes('VOTAÇÃO:')) },
+                      { id: 'votes', label: '🗳️ Votos', show: selectedPolitician.role !== 'Presidente' && scandals.some(s => s.is_positive && s.title.includes('VOTAÇÃO:')) },
+                      { id: 'noticias', label: '📰 Notícias', show: scandals.some(s => !s.is_positive) }
+                    ].filter(t => t.show).map(tab => (
+                      <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                        className={`flex-1 min-w-[72px] py-2 px-2 text-[9px] font-black uppercase tracking-wider rounded-[4px] transition-all whitespace-nowrap ${activeTab === tab.id ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}>
+                        {tab.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
-            </div>
-            <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 bg-black/20 custom-scroll">
-              {loadingScandals ? <div className="flex flex-col items-center justify-center p-12 space-y-4">
-                <Loader2 className="animate-spin text-indigo-500" size={32} />
-                <span className="text-[10px] font-black text-slate-500 uppercase">Consultando histórico...</span>
-              </div> : (
-                <div className="space-y-6">
-                  {/* CONTEÚDO DA ABA: JURÍDICO */}
+
+              {/* CONTEÚDO DAS ABAS */}
+              {loadingScandals ? (
+                <div className="flex flex-col items-center justify-center p-16 space-y-4">
+                  <Loader2 className="animate-spin text-indigo-500" size={32} />
+                  <span className="text-[10px] font-black text-slate-500 uppercase">Consultando histórico...</span>
+                </div>
+              ) : (
+                <div className="p-4 sm:p-6 space-y-4">
+                  {/* ABA: JURÍDICO */}
                   {activeTab === 'lawsuits' && lawsuits.length > 0 && (
                     <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
                       {lawsuits.map((l, i) => (
@@ -607,7 +598,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* CONTEÚDO DA ABA: PROJETOS */}
+                  {/* ABA: PROJETOS */}
                   {activeTab === 'projects' && (
                     <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
                       {scandals.filter(s => s.is_positive && !s.title.startsWith('VOTAÇÃO:')).map((p, i) => (
@@ -624,7 +615,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* CONTEÚDO DA ABA: VOTOS */}
+                  {/* ABA: VOTOS */}
                   {activeTab === 'votes' && (
                     <div className="space-y-3 animate-in slide-in-from-top-2 duration-200">
                       {scandals.filter(s => s.is_positive && s.title.includes('VOTAÇÃO:')).map((v, i) => {
@@ -651,7 +642,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* CONTEÚDO DA ABA: NOTÍCIAS */}
+                  {/* ABA: NOTÍCIAS */}
                   {activeTab === 'noticias' && (
                     <div className="space-y-4 animate-in slide-in-from-top-2 duration-200">
                       {scandals.filter(s => !s.is_positive).map((s, i) => {
@@ -678,7 +669,7 @@ export default function App() {
                     </div>
                   )}
 
-                  {/* ESTADO VAZIO: Se a aba ativa não tiver nada (raro por causa do show: tab.show) */}
+                  {/* ESTADO VAZIO */}
                   {(activeTab === 'lawsuits' && lawsuits.length === 0) && (
                     <div className="flex flex-col items-center justify-center py-20 space-y-4 opacity-40">
                       <div className="w-16 h-16 rounded-full border border-emerald-500/30 flex items-center justify-center">
