@@ -1,0 +1,1 @@
+ALTER TABLE public.lawsuits ADD COLUMN IF NOT EXISTS date_judgment TEXT NOT NULL DEFAULT '';
