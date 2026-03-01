@@ -3,7 +3,7 @@ import { supabase } from './supabase'
 import {
   X, Plus, Edit2, Trash2, RefreshCw, Search,
   Download, AlertTriangle, CheckCircle, Shield,
-  ChevronDown, ChevronUp, Database, Zap, Activity, Globe
+  ChevronDown, ChevronUp, Database, Zap, Activity, Globe, User, Image as ImageIcon, Loader2
 } from 'lucide-react'
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin2026'
@@ -124,6 +124,7 @@ function SelectField({ label, value, onChange, options }) {
 // ─── Politician Form Modal ────────────────────────────────────────────────────
 function PoliticianFormModal({ politician, onSave, onClose }) {
   const [form, setForm] = useState({ ...politician })
+  const [uploadingPhoto, setUploadingPhoto] = useState(false)
   const set = (k, v) => setForm(prev => ({ ...prev, [k]: v }))
 
   return (
@@ -148,35 +149,78 @@ function PoliticianFormModal({ politician, onSave, onClose }) {
             <SelectField label="Estado" value={form.state} onChange={v => set('state', v)}
               options={[{ value: '', label: 'Nacional' }, ...BRAZIL_STATES.map(s => ({ value: s, label: s }))]} />
           </div>
-          <Field label="URL da Foto" value={form.photo_url} onChange={v => set('photo_url', v)} placeholder="https://..." />
 
-          <div className="grid grid-cols-2 gap-3 items-end">
-            <div>
-              <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-1.5">Score (0–100)</label>
-              <input
-                type="number" min="0" max="100" value={form.score}
-                onChange={e => set('score', e.target.value)}
-                className="w-full p-3 bg-black border border-white/10 text-white text-sm rounded-[6px] outline-none focus:border-indigo-500"
-              />
-            </div>
-            <div className="pb-0.5">
-              {form.photo_url
-                ? <img
-                  src={proxyImage(form.photo_url)}
-                  referrerPolicy="no-referrer"
-                  className="w-12 h-12 rounded-[4px] object-cover border border-white/10 transition-opacity duration-300"
-                  onError={e => {
-                    if (!e.target.dataset.retried) {
-                      e.target.dataset.retried = 'true';
-                      e.target.src = form.photo_url;
-                    } else {
-                      e.target.style.display = 'none';
+          <div>
+            <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-1.5 flex items-center justify-between">
+              FOTO DO POLÍTICO
+              {uploadingPhoto && <span className="text-indigo-400 flex items-center gap-1"><Loader2 size={10} className="animate-spin" /> Envio rápido...</span>}
+            </label>
+            <div className="flex gap-3 items-center bg-black border border-white/10 rounded-[6px] p-2 relative">
+              <div className="w-14 h-14 rounded-[4px] bg-slate-900 border border-white/5 overflow-hidden relative shrink-0">
+                {form.photo_url ? (
+                  <img
+                    src={proxyImage(form.photo_url)}
+                    referrerPolicy="no-referrer"
+                    className="w-full h-full object-cover absolute inset-0 transition-opacity duration-300"
+                    onError={e => {
+                      if (!e.target.dataset.retried) {
+                        e.target.dataset.retried = 'true';
+                        e.target.src = form.photo_url;
+                      } else {
+                        e.target.style.display = 'none';
+                      }
+                    }}
+                  />
+                ) : (
+                  <User className="w-full h-full p-3 text-slate-700 absolute inset-0" />
+                )}
+
+                <input
+                  type="file"
+                  accept="image/png, image/jpeg, image/webp"
+                  disabled={uploadingPhoto}
+                  className="absolute inset-0 opacity-0 cursor-pointer z-10"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    setUploadingPhoto(true)
+                    try {
+                      // compress to save db space/bandwidth, max 2MB
+                      const ext = file.name.split('.').pop()
+                      const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${ext}`
+                      const { data, error } = await supabase.storage.from('politician-photos').upload(fileName, file, { cacheControl: '3600', upsert: false })
+                      if (error) throw error
+                      const { data: { publicUrl } } = supabase.storage.from('politician-photos').getPublicUrl(fileName)
+                      set('photo_url', publicUrl)
+                    } catch (err) {
+                      alert('Erro ao enviar foto: ' + err.message)
+                    } finally {
+                      setUploadingPhoto(false)
                     }
                   }}
                 />
-                : <div className="w-12 h-12 rounded-[4px] bg-slate-900 border border-white/5" />
-              }
+                <div className="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 flex items-center justify-center transition-all pointer-events-none">
+                  <ImageIcon size={16} className="text-white" />
+                </div>
+              </div>
+
+              <div className="flex-1 min-w-0 pr-2">
+                <input
+                  type="text" value={form.photo_url || ''} placeholder="URL da Foto ou clique na imagem para enviar..."
+                  onChange={e => set('photo_url', e.target.value)}
+                  className="w-full bg-transparent text-white text-xs outline-none font-medium truncate placeholder-slate-600"
+                />
+              </div>
             </div>
+          </div>
+
+          <div>
+            <label className="text-[9px] font-black text-slate-600 uppercase tracking-widest block mb-1.5">Score (0–100)</label>
+            <input
+              type="number" min="0" max="100" value={form.score}
+              onChange={e => set('score', e.target.value)}
+              className="w-full p-3 bg-black border border-white/10 text-white text-sm rounded-[6px] outline-none focus:border-indigo-500"
+            />
           </div>
         </div>
 
@@ -294,6 +338,8 @@ export default function Admin({ onClose }) {
   const [scrapeState, setScrapeState] = useState('SP')
   const [scrapeCargo, setScrapeCargo] = useState('5')
   const [importing, setImporting] = useState(false)
+  const [importingCargo, setImportingCargo] = useState(false)
+  const [importCargoProgress, setImportCargoProgress] = useState({ current: 0, total: 0 })
 
   // Scanning
   const [scanningId, setScanningId] = useState(null)

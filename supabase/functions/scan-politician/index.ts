@@ -98,8 +98,8 @@ serve(async (req: Request) => {
       }
     }
 
-    // 3. YOUTUBE VIDEOS (Novo Modulo Exclusivo YT)
-    const qYt = `"${name}" (corrupção OR desvio OR investigado OR "lava-jato" OR propina) youtube`
+    // 3. YOUTUBE VIDEOS (Apenas Portais Autoridade: G1, GloboNews, Jovem Pan, SBT)
+    const qYt = `"${name}" (corrupção OR desvio OR investigado OR "lava-jato" OR propina) youtube ("g1" OR "globonews" OR "jovem pan" OR "jovempan" OR "sbt" OR "sbt news")`
     const resYt = await fetch(`https://news.google.com/rss/search?q=${encodeURIComponent(qYt)}&hl=pt-BR&gl=BR&ceid=BR:pt-419`)
     if (resYt.ok) {
       const items = (await resYt.text()).match(/<item>([\s\S]*?)<\/item>/g) || []
