@@ -42,17 +42,48 @@ const cors = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 }
 
-// ── Palavras que indicam escândalo grave ──────────────────────────────────────
+// ── Classificação de gravidade em 4 níveis ────────────────────────────────────
+const CRITICAL_KEYWORDS = [
+  "condenado", "cumprindo pena", "pena privativa", "transitou em julgado",
+  "sentença condenatória", "preso preventivo", "preso em flagrante",
+  "preso definitivo", "cumpre pena", "executando pena",
+]
 const HIGH_KEYWORDS = [
-  "preso", "condenado", "réu", "indiciado", "investigado", "operação",
-  "corrupção", "propina", "lavagem", "desvio", "fraude", "caixa dois",
-  "mandado de prisão", "delação", "denúncia", "STF", "STJ", "TRF",
-  "improbidade", "peculato", "extorsão", "crime", "criminal",
+  "réu", "indiciado", "denúncia criminal", "operação policial", "operação da pf",
+  "lavagem de dinheiro", "improbidade", "peculato", "corrupção passiva",
+  "corrupção ativa", "extorsão", "caixa dois", "delação premiada",
+  "mandado de prisão", "STF", "STJ", "TRF", "crime", "criminal",
+]
+const MEDIUM_KEYWORDS = [
+  "investigado", "suspeito", "inquérito", "corrupção", "propina",
+  "desvio", "fraude", "operação", "cpi", "preso",
 ]
 
-function severity(text: string): "high" | "medium" {
+type Severity = "critical" | "high" | "medium" | "low"
+
+function severity(text: string): Severity {
   const lower = text.toLowerCase()
-  return HIGH_KEYWORDS.some((k) => lower.includes(k)) ? "high" : "medium"
+  if (CRITICAL_KEYWORDS.some((k) => lower.includes(k))) return "critical"
+  if (HIGH_KEYWORDS.some((k) => lower.includes(k))) return "high"
+  if (MEDIUM_KEYWORDS.some((k) => lower.includes(k))) return "medium"
+  return "low"
+}
+
+// ── Recência: escândalos antigos pesam menos ──────────────────────────────────
+function recencyMultiplier(dateStr: string): number {
+  const years = (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+  if (years < 1) return 1.0
+  if (years < 2) return 0.85
+  if (years < 4) return 0.65
+  return 0.40
+}
+
+// ── Pesos por nível ────────────────────────────────────────────────────────────
+const SEVERITY_WEIGHT: Record<string, number> = {
+  critical: 35,
+  high: 20,
+  medium: 10,
+  low: 5,
 }
 
 function today() {
@@ -64,7 +95,7 @@ interface Scandal {
   politician_id: string
   title: string
   caption: string
-  severity: "high" | "medium"
+  severity: Severity
   news_url: string
   date_occurrence: string
 }
@@ -122,7 +153,7 @@ serve(async (req: Request) => {
             politician_id: politicianId,
             title: `STF — Ação Penal: ${s.numeroProcesso || s.numero || "s/n"}`,
             caption: s.ementa?.slice(0, 500) || "Processo criminal no Supremo Tribunal Federal.",
-            severity: "high",
+            severity: "critical", // Processo criminal no STF = nível máximo
             news_url: `https://portal.stf.jus.br/processos/detalhe.asp?incidente=${s.incidente || ""}`,
             date_occurrence: (s.dataJulgamento || s.data || today()).split("T")[0],
           })
@@ -262,17 +293,19 @@ serve(async (req: Request) => {
           } else {
             log.push(`✓ ${fresh.length} escândalos novos salvos no banco`)
 
-            // Recalculate score
+            // Recalculate score (4 levels + recency)
             const { data: allScans } = await db
               .from("scandals")
-              .select("severity")
+              .select("severity, date_occurrence")
               .eq("politician_id", politicianId)
 
             let score = 100
             for (const s of allScans || []) {
-              score -= s.severity === "high" ? 25 : 10
+              const weight = SEVERITY_WEIGHT[s.severity] ?? 10
+              const mult = recencyMultiplier(s.date_occurrence || today())
+              score -= weight * mult
             }
-            score = Math.max(0, score)
+            score = Math.max(0, Math.round(score))
             const status = score >= 75 ? "safe" : score >= 40 ? "warning" : "danger"
             await db.from("politicians").update({ score, status }).eq("id", politicianId)
             log.push(`✓ Score recalculado: ${score} (${status})`)

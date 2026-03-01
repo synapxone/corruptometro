@@ -8,7 +8,12 @@ import {
 
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin2026'
 const ROLES = ['Presidente', 'Governador', 'Senador', 'Deputado Federal', 'Deputado Estadual']
-const SEVERITIES = [{ value: 'medium', label: 'Médio (−10pts)' }, { value: 'high', label: 'Alto (−25pts)' }]
+const SEVERITIES = [
+  { value: 'low', label: 'Leve — Alegação sem processo (−5pts)' },
+  { value: 'medium', label: 'Médio — Investigado / Suspeito (−10pts)' },
+  { value: 'high', label: 'Alto — Réu / Operação / STF (−20pts)' },
+  { value: 'critical', label: 'Crítico — Condenado / Preso (−35pts)' },
+]
 const BRAZIL_STATES = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"]
 const TSE_CARGOS = [
   { value: '1', label: 'Presidente' },
@@ -59,7 +64,7 @@ function emptyPolitician() {
 }
 
 function emptyScandal() {
-  return { id: null, politician_id: '', title: '', caption: '', severity: 'medium', news_url: '', date_occurrence: new Date().toISOString().split('T')[0] }
+  return { id: null, politician_id: '', title: '', caption: '', severity: 'high', news_url: '', date_occurrence: new Date().toISOString().split('T')[0] }
 }
 
 // ─── Field Components ─────────────────────────────────────────────────────────
@@ -237,10 +242,25 @@ export default function Admin({ onClose }) {
   const [editingPolitician, setEditingPolitician] = useState(null)
   const [editingScandal, setEditingScandal] = useState(null)
 
-  // Search / filter
   const [searchPol, setSearchPol] = useState('')
   const [filterRole, setFilterRole] = useState('')
   const [expandedPolitician, setExpandedPolitician] = useState(null)
+  const [expandedScandals, setExpandedScandals] = useState([]) // Local scandals for expanded item
+
+  // Toggle expand and fetch fresh scandals for that politician
+  const toggleExpand = async (id) => {
+    if (expandedPolitician === id) {
+      setExpandedPolitician(null)
+      setExpandedScandals([])
+    } else {
+      setExpandedPolitician(id)
+      setExpandedScandals([])
+      const { data } = await supabase.from('scandals').select('*').eq('politician_id', id).order('date_occurrence', { ascending: false })
+      setExpandedScandals(data || [])
+    }
+  }
+
+  // ... rest of the logic ...
 
   // Scraping
   const [scraping, setScraping] = useState(false)
@@ -347,10 +367,22 @@ export default function Admin({ onClose }) {
   }
 
   const recalcScore = async (politicianId) => {
-    const { data } = await supabase.from('scandals').select('severity').eq('politician_id', politicianId)
+    const { data } = await supabase.from('scandals').select('severity, date_occurrence').eq('politician_id', politicianId)
+    const WEIGHTS = { critical: 35, high: 20, medium: 10, low: 5 }
+    const recency = (dateStr) => {
+      const years = (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+      if (years < 1) return 1.0
+      if (years < 2) return 0.85
+      if (years < 4) return 0.65
+      return 0.40
+    }
     let score = 100
-    for (const s of (data || [])) score -= s.severity === 'high' ? 25 : 10
-    score = Math.max(0, score)
+    for (const s of (data || [])) {
+      const weight = WEIGHTS[s.severity] ?? 10
+      const mult = recency(s.date_occurrence || new Date().toISOString().split('T')[0])
+      score -= weight * mult
+    }
+    score = Math.max(0, Math.round(score))
     const status = scoreToStatus(score)
     await supabase.from('politicians').update({ score, status }).eq('id', politicianId)
     loadData()
@@ -622,7 +654,6 @@ export default function Admin({ onClose }) {
               : filtered.length === 0
                 ? <p className="text-center text-slate-800 py-16 text-xs uppercase tracking-widest">Nenhum resultado</p>
                 : filtered.map(p => {
-                  const polScandals = scandals.filter(s => s.politician_id === p.id)
                   const isExpanded = expandedPolitician === p.id
                   return (
                     <div key={p.id} className="bg-black/40 border border-white/5 rounded-[6px] overflow-hidden">
@@ -642,11 +673,11 @@ export default function Admin({ onClose }) {
                         <div className={`text-base font-black font-mono w-8 text-right ${p.status === 'safe' ? 'text-emerald-400' : p.status === 'warning' ? 'text-amber-400' : 'text-rose-500'}`}>
                           {p.score}
                         </div>
-                        <div className="text-[9px] text-slate-700 font-bold w-8 text-center">
-                          {polScandals.length > 0 && <span className="text-rose-500/70">{polScandals.length}⚠</span>}
+                        <div className="text-[9px] text-slate-700 font-bold w-12 text-center">
+                          Nota Ativa
                         </div>
                         <div className="flex gap-1 shrink-0">
-                          <button onClick={() => setExpandedPolitician(isExpanded ? null : p.id)}
+                          <button onClick={() => toggleExpand(p.id)}
                             className="p-1.5 text-slate-700 hover:text-slate-300 transition-colors">
                             {isExpanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
                           </button>
@@ -697,12 +728,15 @@ export default function Admin({ onClose }) {
                             </div>
                           )}
 
-                          {polScandals.length === 0
-                            ? <p className="text-[10px] text-slate-800 text-center py-4 uppercase tracking-widest">Nenhum escândalo registrado</p>
-                            : polScandals.map(s => (
+                          {expandedScandals.length === 0
+                            ? <p className="text-[10px] text-slate-800 text-center py-4 uppercase tracking-widest">Nenhum escândalo registrado no banco</p>
+                            : expandedScandals.map(s => (
                               <div key={s.id} className="flex items-start gap-3 p-2.5 bg-white/3 rounded-[4px]">
-                                <span className={`text-[7px] font-black uppercase px-1.5 py-0.5 rounded-[3px] shrink-0 mt-0.5 ${s.severity === 'high' ? 'bg-rose-500 text-white' : 'bg-amber-500 text-black'}`}>
-                                  {s.severity}
+                                <span className={`text-[7px] font-black uppercase px-2 py-0.5 rounded-[3px] shrink-0 mt-0.5 ${s.severity === 'critical' ? 'bg-rose-600 text-white' :
+                                  s.severity === 'high' ? 'bg-rose-400 text-black' :
+                                    s.severity === 'medium' ? 'bg-amber-400 text-black' : 'bg-slate-600 text-white'
+                                  }`}>
+                                  {s.severity || 'medium'}
                                 </span>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-[11px] font-bold text-white truncate">{s.title}</p>
