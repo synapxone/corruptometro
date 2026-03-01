@@ -508,7 +508,7 @@ export default function App() {
                         className="w-full text-left flex items-center justify-between border-b border-white/5 pb-4 group"
                       >
                         <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-2 group-hover:text-indigo-400 transition-colors">
-                          <Scale className="text-indigo-400" size={14} /> Dossiê de Processos
+                          <Scale className="text-indigo-400" size={14} /> Dossiê Jurídico
                         </h3>
                         {expandedSections.lawsuits ? <ChevronUp size={14} className="text-slate-500" /> : <ChevronDown size={14} className="text-slate-500" />}
                       </button>
