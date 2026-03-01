@@ -9,7 +9,7 @@ import {
 const ADMIN_PASSWORD = import.meta.env.VITE_ADMIN_PASSWORD || 'admin2026'
 const ROLES = ['Presidente', 'Governador', 'Senador', 'Deputado Federal', 'Deputado Estadual']
 const SEVERITIES = [{ value: 'medium', label: 'Médio (−10pts)' }, { value: 'high', label: 'Alto (−25pts)' }]
-const BRAZIL_STATES = ["AC","AL","AP","AM","BA","CE","DF","ES","GO","MA","MT","MS","MG","PA","PB","PR","PE","PI","RJ","RN","RS","RO","RR","SC","SP","SE","TO"]
+const BRAZIL_STATES = ["AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"]
 const TSE_CARGOS = [
   { value: '1', label: 'Presidente' },
   { value: '3', label: 'Governador' },
@@ -17,7 +17,7 @@ const TSE_CARGOS = [
   { value: '6', label: 'Deputado Federal' },
   { value: '7', label: 'Deputado Estadual' },
 ]
-const CARGO_ROLE_MAP = { '1':'Presidente','3':'Governador','5':'Senador','6':'Deputado Federal','7':'Deputado Estadual' }
+const CARGO_ROLE_MAP = { '1': 'Presidente', '3': 'Governador', '5': 'Senador', '6': 'Deputado Federal', '7': 'Deputado Estadual' }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -464,16 +464,21 @@ export default function Admin({ onClose }) {
   // ── Scan Functions ───────────────────────────────────────────────────────
   const handleScanPolitician = async (politician) => {
     setScanningId(politician.id)
-    setScanLogs(prev => ({ ...prev, [politician.id]: ['Iniciando scan...'] }))
+    setScanLogs(prev => ({ ...prev, [politician.id]: ['Iniciando scan expandido...'] }))
     try {
       const { data, error } = await supabase.functions.invoke('scan-politician', {
-        body: { name: politician.name, politicianId: politician.id, saveToDb: true },
+        body: {
+          name: politician.name,
+          politicianId: politician.id,
+          saveToDb: true,
+          year: scrapeYear // Passa o ano selecionado na aba 'Raspagem'
+        },
       })
       if (error) throw new Error(error.message)
       setScanLogs(prev => ({ ...prev, [politician.id]: data.log || [] }))
       await loadData()
     } catch (err) {
-      setScanLogs(prev => ({ ...prev, [politician.id]: [`Erro: ${err.message}`, 'Verifique: supabase functions deploy scan-politician'] }))
+      setScanLogs(prev => ({ ...prev, [politician.id]: [`Erro: ${err.message}`] }))
     }
     setScanningId(null)
   }
