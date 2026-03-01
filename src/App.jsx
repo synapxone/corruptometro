@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import {
-  Search, ShieldAlert, AlertTriangle, CheckCircle,
-  ExternalLink, Heart, ChevronRight, X, User, Loader2,
-  Filter, Trophy, Scale, Shield, Landmark, BarChart3,
-  Share2, ZoomIn, Info
+  Search, ShieldAlert, CheckCircle,
+  ExternalLink, X, User, Loader2,
+  Trophy, Share2, ZoomIn
 } from 'lucide-react'
 import { supabase } from './supabase'
 import { toPng } from 'html-to-image'
@@ -56,6 +55,7 @@ export default function App() {
       setColinha(prev => ({ ...prev, [role]: null }))
       return
     }
+    trackAction('input_search', { role: role, number })
     const { data } = await supabase
       .from('politicians')
       .select('*')
@@ -258,32 +258,31 @@ export default function App() {
                           <button onClick={() => setSearchingRole(key)} className="text-slate-500 hover:text-white p-2 hover:bg-white/5 rounded-[6px] transition-all"><Search size={16} /></button>
                         </div>
                       </div>
-                      <div className="flex gap-4 items-center">
+                      <div className="flex gap-2 items-center overflow-hidden">
                         <input
                           style={{ backgroundColor: '#000000', color: '#ffffff', border: '1px solid rgba(255,255,255,0.05)' }}
-                          className="w-20 h-16 rounded-[6px] text-3xl font-black text-center focus:border-indigo-500 outline-none transition-all placeholder:text-slate-900 shadow-inner"
+                          className="w-14 sm:w-20 h-14 sm:h-16 shrink-0 rounded-[6px] text-2xl sm:text-3xl font-black text-center focus:border-indigo-500 outline-none transition-all placeholder:text-slate-900 shadow-inner"
                           maxLength={maxLength} value={inputs[key]} onChange={(e) => handleInputChange(key, e.target.value)}
                           placeholder={"0".repeat(maxLength)}
                         />
-                        <div className="flex-1 min-h-[4rem] flex items-center">
+                        <div className="flex-1 min-w-0 min-h-[4rem] flex items-center overflow-hidden">
                           {p ? (
-                            <div className="flex items-center w-full gap-3 bg-black/60 border border-white/5 rounded-[6px] p-2 pr-4 shadow-xl overflow-hidden relative">
-                              <div className="w-11 h-11 rounded-[4px] overflow-hidden bg-slate-900 shrink-0 border border-white/10 relative">
-                                <User className="w-full h-full p-2.5 text-slate-800 absolute inset-0" />
+                            <div className="flex items-center w-full gap-2 bg-black/60 border border-white/5 rounded-[6px] p-2 shadow-xl overflow-hidden relative">
+                              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-[4px] overflow-hidden bg-slate-900 shrink-0 border border-white/10 relative">
+                                <User className="w-full h-full p-2 text-slate-800 absolute inset-0" />
                                 {p.photo_url && <img src={p.photo_url} crossOrigin="anonymous" className="w-full h-full object-cover absolute inset-0" onError={e => e.target.remove()} />}
                               </div>
-                              <div className="flex-1 min-w-0">
+                              <div className="flex-1 min-w-0 overflow-hidden">
                                 <div className="text-[11px] font-black text-white truncate uppercase tracking-tight mb-0.5">{p.name}</div>
-                                <div className="flex items-center gap-2">
-                                  <div className="text-[8px] text-slate-500 font-bold uppercase tracking-wider truncate shrink-0">{p.party} {p.state && ` • ${p.state}`}</div>
-                                  {/* Micro Thermometer */}
-                                  <div className="w-full h-1 bg-black/40 rounded-full overflow-hidden border border-white/5">
+                                <div className="flex items-center gap-1 min-w-0 overflow-hidden">
+                                  <div className="text-[8px] text-slate-500 font-bold uppercase tracking-wider truncate min-w-0">{p.party}{p.state && ` • ${p.state}`}</div>
+                                  <div className="flex-1 h-1 bg-black/40 rounded-full overflow-hidden border border-white/5 shrink-0 w-8">
                                     <div className={`h-full ${getStatusBg(p.score)} transition-all duration-1000`} style={{ width: `${p.score}%` }} />
                                   </div>
                                 </div>
                               </div>
                               <div className="flex flex-col items-end gap-0 shrink-0">
-                                <span className={`text-xl font-black ${getStatusColor(p.score)} font-mono leading-none mb-1`}>{p.score}</span>
+                                <span className={`text-lg font-black ${getStatusColor(p.score)} font-mono leading-none mb-1`}>{p.score}</span>
                                 <button
                                   onClick={() => removePolitician(key)}
                                   className="p-1 hover:bg-rose-500/10 rounded-full text-rose-500/40 hover:text-rose-500 transition-colors"
@@ -293,7 +292,7 @@ export default function App() {
                               </div>
                             </div>
                           ) : (
-                            <div className="flex items-center w-full h-16 border-2 border-dashed border-white/5 rounded-[6px] px-6 text-slate-800 text-[10px] font-black uppercase tracking-widest opacity-30">
+                            <div className="flex items-center w-full h-14 border-2 border-dashed border-white/5 rounded-[6px] px-4 text-slate-800 text-[10px] font-black uppercase tracking-widest opacity-30">
                               PESQUISAR...
                             </div>
                           )}
