@@ -518,8 +518,8 @@ export default function App() {
                           {lawsuits.slice(0, visibleCounts.lawsuits).map((l, i) => (
                             <div key={i} className="p-4 bg-indigo-500/5 border border-indigo-500/10 rounded-[6px]">
                               <div className="flex justify-between items-start mb-2">
-                                <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-indigo-500 text-white rounded-[4px]">{l.court}</span>
-                                <span className="text-[9px] text-slate-500 font-mono font-bold">{l.process_number}</span>
+                                <span className={`text-[9px] font-black uppercase px-2 py-0.5 text-white rounded-[4px] shadow-sm ${l.court === 'STF' ? 'bg-amber-600' : l.court === 'JUSBRASIL' ? 'bg-emerald-600' : 'bg-indigo-500'}`}>{l.court}</span>
+                                <span className="text-[9px] text-slate-500 font-mono font-bold truncate max-w-[120px]" title={l.process_number}>{l.process_number}</span>
                               </div>
                               <p className="text-white text-xs font-bold mb-2">{l.description}</p>
                               <div className="flex justify-between items-center mt-3">
