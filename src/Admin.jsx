@@ -602,7 +602,10 @@ export default function Admin({ onClose }) {
   // ── Filters ──────────────────────────────────────────────────────────────
   const filtered = politicians.filter(p => {
     const q = searchPol.toLowerCase()
-    const matchSearch = !q || p.name?.toLowerCase().includes(q) || p.party?.toLowerCase().includes(q) || p.candidate_number?.includes(q)
+    const matchSearch = !q ||
+      (p.name && p.name.toLowerCase().includes(q)) ||
+      (p.party && p.party.toLowerCase().includes(q)) ||
+      (p.candidate_number && String(p.candidate_number).includes(q))
     const matchRole = !filterRole || p.role === filterRole
     return matchSearch && matchRole
   })
