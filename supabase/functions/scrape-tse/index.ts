@@ -97,49 +97,79 @@ async function fetchFromSenado(state: string, log: string[]): Promise<Candidate[
   }
 }
 
+// Códigos de eleição conhecidos do TSE (extraídos das URLs de resultado)
+// Eleições gerais (Presidente, Governador, Senador, Dep. Federal, Dep. Estadual): 2022=544, 2018=376
+// Eleições municipais (Prefeito, Vereador): 2024=619, 2020=548
+const ELECTION_CODES: Record<string, string> = {
+  '2022': '544', // Eleição geral federal + estadual
+  '2018': '376',
+  '2026': '',    // Ainda não disponível
+  '2024': '619', // Eleição municipal — SEM dep. estadual/federal
+  '2020': '548',
+}
+
 // ── Estratégia 3: TSE DivulgaCand (cargos 1, 3, 7) ──────────────────────────
 async function fetchFromTSE(year: string, state: string, cargo: string, log: string[]): Promise<Candidate[]> {
   const role = CARGO_ROLE_MAP[cargo] || 'Outro'
   const uf = cargo === '1' ? 'BR' : state
 
-  // Passo 1: descobrir o código da eleição para o ano/UF
-  let codigoEleicao = ''
-  try {
-    const elecUrl = `https://divulgacandcontas.tse.jus.br/divulga/rest/v1/eleicao/buscar?ano=${year}&tipo=E`
-    log.push(`TSE Eleições → ${elecUrl}`)
-    const elecRes = await fetch(elecUrl, {
-      headers: { Accept: 'application/json' },
-      signal: AbortSignal.timeout(10000),
-    })
-    if (elecRes.ok) {
-      const elecData = await elecRes.json()
-      const eleicoes: any[] = elecData.eleicoes || elecData || []
-      // Para cargo estadual/governador: filtrar pela UF. Para presidente: pegar eleição federal (BR).
-      for (const e of eleicoes) {
-        const sgUf = (e.sgUFEleicao || '').toUpperCase()
-        if (cargo === '1' && (sgUf === 'BR' || sgUf === '')) {
-          codigoEleicao = String(e.cdEleicao || e.codigo || '')
-          break
-        } else if (cargo !== '1' && sgUf === uf.toUpperCase()) {
-          codigoEleicao = String(e.cdEleicao || e.codigo || '')
-          break
-        }
-      }
-      // Fallback: pegar a primeira eleição da lista
-      if (!codigoEleicao && eleicoes.length > 0) {
-        codigoEleicao = String(eleicoes[0].cdEleicao || eleicoes[0].codigo || '')
-      }
-      log.push(`Código da eleição: ${codigoEleicao || 'não encontrado'}`)
-    } else {
-      log.push(`TSE Eleições HTTP ${elecRes.status}`)
-    }
-  } catch (e) {
-    log.push(`TSE Eleições falhou: ${(e as Error).message}`)
+  // Validação: Dep. Estadual e cargos gerais não existem em eleições municipais (2024, 2020)
+  const isMunicipalYear = year === '2024' || year === '2020'
+  if (isMunicipalYear && ['3', '5', '6', '7'].includes(cargo)) {
+    log.push(`⚠ ${role} não é eleito em ${year} (eleição municipal). Use 2022 ou 2018.`)
+    return []
   }
 
-  if (!codigoEleicao) return []
+  // Passo 1: descobrir o código da eleição
+  let codigoEleicao = ELECTION_CODES[year] || ''
 
-  // Passo 2: buscar candidatos com o código da eleição
+  if (!codigoEleicao) {
+    // Tenta descobrir dinamicamente via TSE
+    const endpoints = [
+      `https://divulgacandcontas.tse.jus.br/divulga/rest/v1/eleicao/listar?ano=${year}`,
+      `https://divulgacandcontas.tse.jus.br/divulga/rest/v1/eleicao/listar/${year}`,
+    ]
+    for (const elecUrl of endpoints) {
+      try {
+        log.push(`TSE Eleições → ${elecUrl}`)
+        const elecRes = await fetch(elecUrl, {
+          headers: { Accept: 'application/json' },
+          signal: AbortSignal.timeout(8000),
+        })
+        if (elecRes.ok) {
+          const elecData = await elecRes.json()
+          const eleicoes: any[] = elecData.eleicoes || elecData || []
+          for (const e of eleicoes) {
+            const sgUf = (e.sgUFEleicao || '').toUpperCase()
+            if (cargo === '1' && (sgUf === 'BR' || sgUf === '')) {
+              codigoEleicao = String(e.cdEleicao || e.codigo || '')
+              break
+            } else if (cargo !== '1' && (sgUf === uf.toUpperCase() || sgUf === 'BR')) {
+              codigoEleicao = String(e.cdEleicao || e.codigo || '')
+              break
+            }
+          }
+          if (!codigoEleicao && eleicoes.length > 0) {
+            codigoEleicao = String(eleicoes[0].cdEleicao || eleicoes[0].codigo || '')
+          }
+          if (codigoEleicao) break
+        } else {
+          log.push(`TSE Eleições HTTP ${elecRes.status}`)
+        }
+      } catch (e) {
+        log.push(`TSE Eleições falhou: ${(e as Error).message}`)
+      }
+    }
+  }
+
+  if (!codigoEleicao) {
+    log.push(`Código da eleição não encontrado para ${year}. Tente o ano 2022 para cargos estaduais.`)
+    return []
+  }
+
+  log.push(`Código da eleição: ${codigoEleicao}`)
+
+  // Passo 2: buscar candidatos
   try {
     const candUrl = `https://divulgacandcontas.tse.jus.br/divulga/rest/v1/candidatura/listar/${year}/${uf}/${codigoEleicao}/${cargo}/candidatos`
     log.push(`TSE Candidatos → ${candUrl}`)

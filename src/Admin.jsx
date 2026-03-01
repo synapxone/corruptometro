@@ -27,7 +27,7 @@ const CARGO_ROLE_MAP = { '1': 'Presidente', '3': 'Governador', '5': 'Senador', '
 // Helper para burlar bloqueio de imagem (CORS/Hotlink) de sites do governo
 const proxyImage = (url) => {
   if (!url) return null
-  if (url.includes('wsrv.nl')) return url
+  if (url.includes('wsrv.nl') || url.includes('supabase.co')) return url
   try {
     const normalized = decodeURIComponent(url)
     return `https://wsrv.nl/?url=${encodeURIComponent(normalized)}`
@@ -728,6 +728,46 @@ export default function Admin({ onClose }) {
     setImporting(false)
   }
 
+  const handleImportCargoBR = async () => {
+    const cargoLabel = CARGO_ROLE_MAP[scrapeCargo]
+    if (!confirm(`Importar "${cargoLabel}" para todos os 27 estados?`)) return
+    setImportingCargo(true)
+    setScrapeLog([])
+    setImportCargoProgress({ current: 0, total: BRAZIL_STATES.length })
+    addLog(`Iniciando importação de ${cargoLabel} em todos os estados...`)
+    let total = 0
+    for (let i = 0; i < BRAZIL_STATES.length; i++) {
+      const estado = BRAZIL_STATES[i]
+      setImportCargoProgress({ current: i + 1, total: BRAZIL_STATES.length })
+      addLog(`[${i + 1}/${BRAZIL_STATES.length}] ${cargoLabel} / ${estado}...`)
+      try {
+        const { data } = await supabase.functions.invoke('scrape-tse', {
+          body: { year: scrapeYear, state: estado, cargo: scrapeCargo },
+        })
+        if (data?.candidates?.length > 0) {
+          for (const c of data.candidates) {
+            const { error } = await supabase.from('politicians').insert(c)
+            if (error) {
+              await supabase.from('politicians')
+                .update(c).eq('name', c.name).eq('role', c.role).eq('state', c.state)
+            }
+          }
+          total += data.candidates.length
+          addLog(`✓ ${estado}: ${data.candidates.length} importados`, 'success')
+        } else {
+          addLog(`${estado}: sem resultados`, 'dim')
+        }
+      } catch (e) {
+        addLog(`Erro ${estado}: ${e.message}`, 'warn')
+      }
+      await new Promise(r => setTimeout(r, 300))
+    }
+    addLog(`✓ Concluído: ${total} ${cargoLabel}s importados`, 'success')
+    setImportCargoProgress({ current: 0, total: 0 })
+    setImportingCargo(false)
+    await loadData()
+  }
+
   // ── Admin Panel ───────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-[200] bg-[#030609] overflow-y-auto">
@@ -1013,7 +1053,16 @@ export default function Admin({ onClose }) {
             </button>
 
             <button
-              onClick={handleImportAllTSE} disabled={importing || scraping}
+              onClick={handleImportCargoBR} disabled={importingCargo || importing || scraping}
+              className="w-full flex items-center justify-center gap-2 p-4 bg-indigo-500/10 hover:bg-indigo-500/20 disabled:opacity-40 text-indigo-400 hover:text-indigo-300 font-black uppercase tracking-widest text-xs rounded-[6px] transition-all border border-indigo-500/20">
+              {importingCargo
+                ? <><RefreshCw className="animate-spin" size={14} /> {importCargoProgress.current}/{importCargoProgress.total} estados...</>
+                : <><Globe size={14} /> Importar {CARGO_ROLE_MAP[scrapeCargo]} em Todos os Estados</>
+              }
+            </button>
+
+            <button
+              onClick={handleImportAllTSE} disabled={importing || importingCargo || scraping}
               className="w-full flex items-center justify-center gap-2 p-4 bg-white/5 hover:bg-white/10 disabled:opacity-40 text-slate-400 hover:text-white font-black uppercase tracking-widest text-xs rounded-[6px] transition-all border border-white/5">
               {importing
                 ? <><RefreshCw className="animate-spin" size={14} /> Importando todos os estados...</>
