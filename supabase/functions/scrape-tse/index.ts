@@ -188,7 +188,7 @@ async function fetchFromTSE(year: string, state: string, cargo: string, log: str
         party: (c.partido?.sigla || c.siglaPartido || '').toUpperCase(),
         role,
         state: uf.toUpperCase(),
-        photo_url: c.fotoUrl || null,
+        photo_url: c.id ? `https://divulgacandcontas.tse.jus.br/divulga/rest/v1/candidatura/buscar/foto/2/${c.id}/${codigoEleicao}` : null,
         score: 50,
         status: 'warning',
       }))
