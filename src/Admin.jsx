@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from './supabase'
 import {
   X, Plus, Edit2, Trash2, RefreshCw, Search,
@@ -164,8 +164,15 @@ function PoliticianFormModal({ politician, onSave, onClose }) {
                 ? <img
                   src={proxyImage(form.photo_url)}
                   referrerPolicy="no-referrer"
-                  className="w-12 h-12 rounded-[4px] object-cover border border-white/10"
-                  onError={e => e.target.style.display = 'none'}
+                  className="w-12 h-12 rounded-[4px] object-cover border border-white/10 transition-opacity duration-300"
+                  onError={e => {
+                    if (!e.target.dataset.retried) {
+                      e.target.dataset.retried = 'true';
+                      e.target.src = form.photo_url;
+                    } else {
+                      e.target.style.display = 'none';
+                    }
+                  }}
                 />
                 : <div className="w-12 h-12 rounded-[4px] bg-slate-900 border border-white/5" />
               }
@@ -415,23 +422,20 @@ export default function Admin({ onClose }) {
   }
 
   const recalcScore = async (politicianId) => {
-    const { data } = await supabase.from('scandals').select('severity, date_occurrence').eq('politician_id', politicianId)
-    const WEIGHTS = { critical: 35, high: 20, medium: 10, low: 5 }
-    const recency = (dateStr) => {
-      const years = (Date.now() - new Date(dateStr).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-      if (years < 1) return 1.0
-      if (years < 2) return 0.85
-      if (years < 4) return 0.65
-      return 0.40
-    }
-    let score = 100
-    for (const s of (data || [])) {
-      const weight = WEIGHTS[s.severity] ?? 10
-      const mult = recency(s.date_occurrence || new Date().toISOString().split('T')[0])
-      score -= weight * mult
-    }
-    score = Math.max(0, Math.round(score))
-    const status = scoreToStatus(score)
+    const { data } = await supabase.from('scandals').select('is_positive, date_occurrence').eq('politician_id', politicianId)
+    const negativeRecords = (data || []).filter(s => !s.is_positive).length;
+
+    let score = 100;
+    if (negativeRecords <= 5) score = 100 - (negativeRecords * 5); // 75-100
+    else if (negativeRecords <= 15) score = Math.max(50, 75 - ((negativeRecords - 5) * 2.5)); // 50-72.5
+    else if (negativeRecords <= 25) score = Math.max(25, 50 - ((negativeRecords - 15) * 2.5)); // 25-47.5
+    else score = Math.max(0, 25 - ((negativeRecords - 25))); // 0-24
+    score = Math.round(score);
+
+    let status = 'safe';
+    if (score < 25) status = 'critical';
+    else if (score < 50) status = 'danger';
+    else if (score < 75) status = 'warning';
     await supabase.from('politicians').update({ score, status }).eq('id', politicianId)
     loadData()
   }

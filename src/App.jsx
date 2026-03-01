@@ -494,8 +494,15 @@ export default function App() {
             <div className="flex items-center gap-3 px-4 py-3 bg-black/70 border-b border-white/5 shrink-0 backdrop-blur-md">
               <div className="w-9 h-9 rounded-[4px] overflow-hidden bg-slate-900 shrink-0 border border-white/10 relative">
                 {selectedPolitician.photo_url && (
-                  <img src={proxyImage(selectedPolitician.photo_url)} referrerPolicy="no-referrer" className="w-full h-full object-cover absolute inset-0"
-                    onError={e => { e.target.style.display = 'none' }} />
+                  <img src={proxyImage(selectedPolitician.photo_url)} referrerPolicy="no-referrer" className="w-full h-full object-cover absolute inset-0 transition-opacity duration-300"
+                    onError={e => {
+                      if (!e.target.dataset.retried) {
+                        e.target.dataset.retried = 'true';
+                        e.target.src = selectedPolitician.photo_url;
+                      } else {
+                        e.target.style.display = 'none';
+                      }
+                    }} />
                 )}
                 <User className="w-full h-full p-2 text-slate-700 absolute inset-0" />
               </div>
@@ -520,8 +527,17 @@ export default function App() {
                   <div className="w-20 h-20 rounded-[6px] mx-auto shadow-2xl border-2 border-indigo-500 overflow-hidden bg-slate-900 relative">
                     {selectedPolitician.photo_url && (
                       <img src={proxyImage(selectedPolitician.photo_url)} referrerPolicy="no-referrer"
-                        className="w-full h-full object-cover absolute inset-0" alt={selectedPolitician.name}
-                        onError={e => { e.target.style.display = 'none'; const f = e.currentTarget.parentElement.querySelector('.fallback-icon'); if (f) f.style.display = 'block'; }} />
+                        className="w-full h-full object-cover absolute inset-0 transition-opacity duration-300" alt={selectedPolitician.name}
+                        onError={e => {
+                          if (!e.target.dataset.retried) {
+                            e.target.dataset.retried = 'true';
+                            e.target.src = selectedPolitician.photo_url;
+                          } else {
+                            e.target.style.display = 'none';
+                            const f = e.currentTarget.parentElement.querySelector('.fallback-icon');
+                            if (f) f.style.display = 'block';
+                          }
+                        }} />
                     )}
                     <User className="w-full h-full p-4 text-slate-700 absolute inset-0 fallback-icon" style={{ display: selectedPolitician.photo_url ? 'none' : 'block' }} />
                   </div>
