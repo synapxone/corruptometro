@@ -431,29 +431,64 @@ export default function App() {
               {loadingScandals ? <div className="flex flex-col items-center justify-center p-12 space-y-4">
                 <Loader2 className="animate-spin text-indigo-500" size={32} />
                 <span className="text-[10px] font-black text-slate-500 uppercase">Consultando bases criminais...</span>
-              </div> :
-                scandals.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 space-y-4 opacity-40">
-                    <div className="w-16 h-16 rounded-full border border-emerald-500/30 flex items-center justify-center">
-                      <CheckCircle size={32} className="text-emerald-500" />
-                    </div>
-                    <p className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-500">Ficha Limpa Detectada</p>
-                  </div>
-                ) :
-                  scandals.map((s, i) => (
-                    <a key={i} href={s.news_url} target="_blank" rel="noopener noreferrer" className="block p-5 bg-black/40 border border-white/5 rounded-[6px] hover:border-white/20 hover:bg-black/60 transition-all group">
-                      <div className="flex justify-between items-center mb-3">
-                        <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-[4px] shadow-lg ${s.severity === 'high' ? 'bg-rose-500 text-white' : 'bg-amber-500 text-black'}`}>{s.severity === 'high' ? 'CRUCIAL' : 'MÉDIO'}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] text-slate-600 font-bold font-mono">{new Date(s.date_occurrence).toLocaleDateString('pt-BR')}</span>
-                          <ExternalLink size={12} className="text-slate-600 group-hover:text-indigo-400" />
+              </div> : (
+                <div className="space-y-8">
+                  {/* SEÇÃO: PROCESSOS JUDICIAIS */}
+                  {lawsuits.length > 0 && (
+                    <div className="space-y-4">
+                      <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-2 border-b border-white/5 pb-4">
+                        <Scale className="text-indigo-400" size={14} /> Processos em Instâncias Superiores
+                      </h3>
+                      {lawsuits.map((l, i) => (
+                        <div key={i} className="p-4 bg-indigo-500/5 border border-indigo-500/10 rounded-[6px]">
+                          <div className="flex justify-between items-start mb-2">
+                            <span className="text-[9px] font-black uppercase px-2 py-0.5 bg-indigo-500 text-white rounded-[4px]">{l.court}</span>
+                            <span className="text-[9px] text-slate-500 font-mono font-bold">{l.process_number}</span>
+                          </div>
+                          <p className="text-white text-xs font-bold mb-2">{l.description}</p>
+                          <div className="flex justify-between items-center mt-3">
+                            <div className="px-2 py-1 bg-white/5 rounded-[4px] text-[8px] font-black text-slate-400 uppercase tracking-widest border border-white/5">{l.status}</div>
+                            {l.news_url && (
+                              <a href={l.news_url} target="_blank" rel="noopener noreferrer" className="text-[8px] text-indigo-400 font-black uppercase hover:underline flex items-center gap-1">
+                                Ver Detalhes STF <ExternalLink size={8} />
+                              </a>
+                            )}
+                          </div>
                         </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* SEÇÃO: ESCÂNDALOS E NOTÍCIAS */}
+                  <div className="space-y-4">
+                    <h3 className="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em] flex items-center gap-2 border-b border-white/5 pb-4">
+                      <ShieldAlert className="text-rose-500" size={14} /> Dossiê de Escândalos
+                    </h3>
+                    {scandals.length === 0 && lawsuits.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-20 space-y-4 opacity-40">
+                        <div className="w-16 h-16 rounded-full border border-emerald-500/30 flex items-center justify-center">
+                          <CheckCircle size={32} className="text-emerald-500" />
+                        </div>
+                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-500">Ficha Limpa Detectada</p>
                       </div>
-                      <h4 className="text-white text-base font-black leading-tight mb-2 uppercase tracking-tight group-hover:text-indigo-300 transition-colors">{s.title}</h4>
-                      <p className="text-slate-500 text-xs line-clamp-3 leading-relaxed font-medium">{s.caption}</p>
-                    </a>
-                  ))
-              }
+                    ) : (
+                      scandals.map((s, i) => (
+                        <a key={i} href={s.news_url} target="_blank" rel="noopener noreferrer" className="block p-5 bg-black/40 border border-white/5 rounded-[6px] hover:border-white/20 hover:bg-black/60 transition-all group">
+                          <div className="flex justify-between items-center mb-3">
+                            <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-[4px] shadow-lg ${s.severity === 'high' ? 'bg-rose-500 text-white' : 'bg-amber-500 text-black'}`}>{s.severity === 'high' ? 'CRUCIAL' : 'MÉDIO'}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[10px] text-slate-600 font-bold font-mono">{new Date(s.date_occurrence).toLocaleDateString('pt-BR')}</span>
+                              <ExternalLink size={12} className="text-slate-600 group-hover:text-indigo-400" />
+                            </div>
+                          </div>
+                          <h4 className="text-white text-base font-black leading-tight mb-2 uppercase tracking-tight group-hover:text-indigo-300 transition-colors">{s.title}</h4>
+                          <p className="text-slate-500 text-xs line-clamp-3 leading-relaxed font-medium">{s.caption}</p>
+                        </a>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
