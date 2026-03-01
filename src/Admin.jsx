@@ -24,6 +24,13 @@ const TSE_CARGOS = [
 ]
 const CARGO_ROLE_MAP = { '1': 'Presidente', '3': 'Governador', '5': 'Senador', '6': 'Deputado Federal', '7': 'Deputado Estadual' }
 
+// Helper para burlar bloqueio de imagem (CORS/Hotlink) de sites do governo
+const proxyImage = (url) => {
+  if (!url) return null
+  if (url.includes('wsrv.nl')) return url
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&default=identicon`
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 // Returns true if URL exists (not 404). Fails silently for CORS/network errors.
@@ -149,7 +156,12 @@ function PoliticianFormModal({ politician, onSave, onClose }) {
             </div>
             <div className="pb-0.5">
               {form.photo_url
-                ? <img src={form.photo_url} className="w-12 h-12 rounded-[4px] object-cover border border-white/10" onError={e => e.target.style.display = 'none'} />
+                ? <img
+                  src={proxyImage(form.photo_url)}
+                  referrerPolicy="no-referrer"
+                  className="w-12 h-12 rounded-[4px] object-cover border border-white/10"
+                  onError={e => e.target.style.display = 'none'}
+                />
                 : <div className="w-12 h-12 rounded-[4px] bg-slate-900 border border-white/5" />
               }
             </div>
@@ -658,9 +670,14 @@ export default function Admin({ onClose }) {
                   return (
                     <div key={p.id} className="bg-black/40 border border-white/5 rounded-[6px] overflow-hidden">
                       <div className="flex items-center gap-3 p-3 hover:bg-white/3 transition-all">
-                        <div className="w-9 h-9 rounded-[4px] overflow-hidden bg-slate-900 border border-white/10 shrink-0">
+                        <div className="w-9 h-9 rounded-[4px] overflow-hidden bg-slate-900 border border-white/10 shrink-0 relative">
                           {p.photo_url
-                            ? <img src={p.photo_url} className="w-full h-full object-cover" onError={e => e.target.style.display = 'none'} />
+                            ? <img
+                              src={proxyImage(p.photo_url)}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                              onError={e => e.target.style.display = 'none'}
+                            />
                             : <div className="w-full h-full bg-slate-900" />
                           }
                         </div>

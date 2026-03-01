@@ -1,17 +1,23 @@
 /**
  * scan-politician — Supabase Edge Function
  *
- * Busca escândalos e notícias de um político usando:
- *   1. STF Jurisprudência (gratuito)
- *   2. SerpAPI / Google (requer SERPAPI_KEY)
+ * Busca escândalos e processos judiciais de um político usando:
+ *   1. STF Jurisprudência — Ação Penal (gratuito)
+ *   2. SerpAPI / Google News (requer SERPAPI_KEY)
  *   3. NewsAPI (requer NEWS_API_KEY)
  *   4. Google Custom Search (requer GOOGLE_API_KEY + GOOGLE_CSE_ID)
+ *   5. CNJ DataJud — STF, STJ, TRF1-4 (chave pública, sem custo)
  *
  * Supabase Secrets necessários:
  *   supabase secrets set SERPAPI_KEY=<sua_chave>
  *   supabase secrets set NEWS_API_KEY=<sua_chave>
  *   supabase secrets set GOOGLE_API_KEY=<sua_chave>   (alternativo ao SerpAPI)
  *   supabase secrets set GOOGLE_CSE_ID=<seu_id>       (alternativo ao SerpAPI)
+ *   supabase secrets set CNJ_DATAJUD_KEY=<sua_chave>  (opcional — usa chave pública se omitido)
+ *
+ * Tabelas necessárias no Supabase:
+ *   scandals (já existe)
+ *   lawsuits — criar com o SQL em supabase/migrations/lawsuits.sql
  *
  * Body aceito:
  *   { name: string, politicianId: string, saveToDb?: boolean }
@@ -134,13 +140,35 @@ interface Scandal {
   date_occurrence: string
 }
 
+interface Lawsuit {
+  politician_id: string
+  court: string
+  process_number: string
+  description: string
+  status: string
+  news_url: string | null
+  date_judgment: string
+}
+
+// CNJ DataJud: chave pública disponível em datajud-wiki.cnj.jus.br
+const DATAJUD_PUBLIC_KEY = "cDZHYzlZa0JadVREZDJCendFbXNBR3A6aDJpN3pvb3ZJZE5VWTFUeDFHd0tkQQ=="
+
+// Classes processuais criminais relevantes
+const CRIMINAL_CLASSES = [
+  "ação penal", "inquerito", "inquérito", "habeas corpus",
+  "reclamação", "penal", "crime", "execução penal",
+  "mandado de segurança criminal",
+]
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors })
 
   const log: string[] = []
   const scandals: Scandal[] = []
+  const lawsuits: Lawsuit[] = []
   const seen = new Set<string>() // dedup by URL
+  const seenProcesses = new Set<string>() // dedup lawsuits by process number
 
   async function addScandal(s: Scandal) {
     if (s.news_url && seen.has(s.news_url)) return
@@ -303,59 +331,173 @@ serve(async (req: Request) => {
       }
     }
 
-    // ── 5. Salvar no banco + recalcular score ────────────────────────────────
-    if (saveToDb && scandals.length > 0 && politicianId) {
+    // ── 5. CNJ DataJud (STF + STJ + TRF1-6) ─────────────────────────────────
+    try {
+      const datajudKey = Deno.env.get("CNJ_DATAJUD_KEY") || DATAJUD_PUBLIC_KEY
+      const courts = [
+        { api: "api_publica_stf",  name: "STF",   portal: "https://portal.stf.jus.br/processos/detalhe.asp?numeroTema=" },
+        { api: "api_publica_stj",  name: "STJ",   portal: "https://www.stj.jus.br/websecstj/cgi/revista/REJ.cgi/ITA?seq=" },
+        { api: "api_publica_trf1", name: "TRF-1", portal: null },
+        { api: "api_publica_trf2", name: "TRF-2", portal: null },
+        { api: "api_publica_trf3", name: "TRF-3", portal: null },
+        { api: "api_publica_trf4", name: "TRF-4", portal: null },
+      ]
+      log.push(`CNJ DataJud → ${courts.length} tribunais...`)
+
+      for (const court of courts) {
+        try {
+          const res = await fetch(
+            `https://api-publica.datajud.cnj.jus.br/${court.api}/_search`,
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `ApiKey ${datajudKey}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                query: {
+                  bool: {
+                    should: [
+                      { match: { "partes.nome": { query: name, operator: "and" } } },
+                      { match_phrase: { "partes.nome": name } },
+                    ],
+                    minimum_should_match: 1,
+                  },
+                },
+                size: 8,
+                sort: [{ "dataHoraUltimaAtualizacao": "desc" }],
+              }),
+              signal: AbortSignal.timeout(12000),
+            },
+          )
+
+          if (!res.ok) { log.push(`DataJud ${court.name}: HTTP ${res.status}`); continue }
+
+          const data = await res.json()
+          const hits = data.hits?.hits || []
+          let added = 0
+
+          for (const hit of hits) {
+            const src = hit._source || {}
+            const classeNome = (src.classeProcessual?.nome || "").toLowerCase()
+
+            // Só processa criminal
+            if (!CRIMINAL_CLASSES.some((k) => classeNome.includes(k))) continue
+
+            const num = src.numeroProcesso || hit._id || ""
+            if (seenProcesses.has(num)) continue
+            seenProcesses.add(num)
+
+            // Status: último movimento
+            const lastMove = src.movimentos?.[0]?.nome || "Em andamento"
+
+            // Partes como descrição
+            const partesStr = (src.partes || [])
+              .filter((p: { polo?: string }) => p.polo === "PASSIVO" || p.polo === "ATIVO")
+              .map((p: { nome?: string; polo?: string }) => `${p.nome || ""} (${p.polo || ""})`)
+              .join("; ")
+
+            lawsuits.push({
+              politician_id: politicianId,
+              court: court.name,
+              process_number: num,
+              description: `${src.classeProcessual?.nome || "Processo"}: ${partesStr || name}`,
+              status: lastMove,
+              news_url: null,
+              date_judgment: (src.dataHoraUltimaAtualizacao || today()).split("T")[0],
+            })
+            added++
+          }
+          if (added > 0) log.push(`✓ DataJud ${court.name}: ${added} processos criminais`)
+        } catch (e) {
+          log.push(`DataJud ${court.name}: ${(e as Error).message}`)
+        }
+      }
+      log.push(`✓ DataJud total: ${lawsuits.length} processos`)
+    } catch (e) {
+      log.push(`DataJud: ${(e as Error).message}`)
+    }
+
+    // ── 7. Salvar no banco + recalcular score ────────────────────────────────
+    if (saveToDb && politicianId) {
       try {
         const db = createClient(
           Deno.env.get("SUPABASE_URL")!,
           Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
         )
 
-        // Insert only non-duplicate titles for this politician
-        const { data: existing } = await db
+        // ── Salvar scandals ──────────────────────────────────────────────────
+        if (scandals.length > 0) {
+          const { data: existing } = await db
+            .from("scandals")
+            .select("news_url")
+            .eq("politician_id", politicianId)
+
+          const existingUrls = new Set((existing || []).map((s: { news_url: string }) => s.news_url))
+          const fresh = scandals.filter((s) => !existingUrls.has(s.news_url))
+
+          if (fresh.length > 0) {
+            const { error } = await db.from("scandals").insert(fresh)
+            if (error) log.push(`Erro ao salvar scandals: ${error.message}`)
+            else log.push(`✓ ${fresh.length} escândalos salvos`)
+          } else {
+            log.push("Nenhum escândalo novo")
+          }
+        }
+
+        // ── Salvar lawsuits ──────────────────────────────────────────────────
+        if (lawsuits.length > 0) {
+          const { data: existingL } = await db
+            .from("lawsuits")
+            .select("process_number")
+            .eq("politician_id", politicianId)
+
+          const existingNums = new Set((existingL || []).map((l: { process_number: string }) => l.process_number))
+          const freshL = lawsuits.filter((l) => !existingNums.has(l.process_number))
+
+          if (freshL.length > 0) {
+            const { error } = await db.from("lawsuits").insert(freshL)
+            if (error) log.push(`Erro ao salvar lawsuits: ${error.message}`)
+            else log.push(`✓ ${freshL.length} processos judiciais salvos`)
+          } else {
+            log.push("Nenhum processo judicial novo")
+          }
+        }
+
+        // ── Recalcular score (scandals + lawsuits contribuem) ────────────────
+        const { data: allScans } = await db
           .from("scandals")
-          .select("news_url")
+          .select("severity, date_occurrence")
           .eq("politician_id", politicianId)
 
-        const existingUrls = new Set((existing || []).map((s: { news_url: string }) => s.news_url))
-        const fresh = scandals.filter((s) => !existingUrls.has(s.news_url))
+        const { data: allLaws } = await db
+          .from("lawsuits")
+          .select("date_judgment")
+          .eq("politician_id", politicianId)
 
-        if (fresh.length > 0) {
-          const { error } = await db.from("scandals").insert(fresh)
-          if (error) {
-            log.push(`Erro ao salvar: ${error.message}`)
-          } else {
-            log.push(`✓ ${fresh.length} escândalos novos salvos no banco`)
-
-            // Recalculate score (4 levels + recency)
-            const { data: allScans } = await db
-              .from("scandals")
-              .select("severity, date_occurrence")
-              .eq("politician_id", politicianId)
-
-            let score = 100
-            for (const s of allScans || []) {
-              const weight = SEVERITY_WEIGHT[s.severity] ?? 10
-              const mult = recencyMultiplier(s.date_occurrence || today())
-              score -= weight * mult
-            }
-            score = Math.max(0, Math.round(score))
-            const status = score >= 75 ? "safe" : score >= 40 ? "warning" : "danger"
-            await db.from("politicians").update({ score, status }).eq("id", politicianId)
-            log.push(`✓ Score recalculado: ${score} (${status})`)
-          }
-        } else {
-          log.push("Nenhum escândalo novo (todos já estavam no banco)")
+        let score = 100
+        for (const s of allScans || []) {
+          const weight = SEVERITY_WEIGHT[s.severity] ?? 10
+          const mult = recencyMultiplier(s.date_occurrence || today())
+          score -= weight * mult
         }
+        // Cada processo judicial no STF/STJ/TRF pesa como "high" com recência
+        for (const l of allLaws || []) {
+          score -= SEVERITY_WEIGHT["high"] * recencyMultiplier(l.date_judgment || today())
+        }
+        score = Math.max(0, Math.round(score))
+        const status = score >= 75 ? "safe" : score >= 40 ? "warning" : "danger"
+        await db.from("politicians").update({ score, status }).eq("id", politicianId)
+        log.push(`✓ Score recalculado: ${score} (${status})`)
       } catch (e) {
         log.push(`Erro DB: ${(e as Error).message}`)
       }
     }
 
-    log.push(`[FIM] ${scandals.length} escândalos totais para ${name}`)
+    log.push(`[FIM] ${scandals.length} escândalos + ${lawsuits.length} processos para ${name}`)
 
     return new Response(
-      JSON.stringify({ scandals, log, total: scandals.length }),
+      JSON.stringify({ scandals, lawsuits, log, total: scandals.length + lawsuits.length }),
       { headers: { ...cors, "Content-Type": "application/json" } },
     )
   } catch (err) {

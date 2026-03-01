@@ -15,6 +15,13 @@ const roleLabels = {
   presidente: 'Presidente', governador: 'Governador', senador1: 'Senador 1', senador2: 'Senador 2', depFederal: 'Deputado Federal', depEstadual: 'Deputado Estadual'
 }
 
+// Helper para burlar bloqueio de imagem (CORS/Hotlink) de sites do governo
+const proxyImage = (url) => {
+  if (!url) return null
+  if (url.includes('wsrv.nl')) return url
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&default=identicon`
+}
+
 export default function App() {
   const [selectedPolitician, setSelectedPolitician] = useState(null)
   const [scandals, setScandals] = useState([])
@@ -311,12 +318,13 @@ export default function App() {
                               <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-[4px] overflow-hidden bg-slate-900 shrink-0 border border-white/10 relative">
                                 {p.photo_url && (
                                   <img
-                                    src={p.photo_url}
+                                    src={proxyImage(p.photo_url)}
                                     referrerPolicy="no-referrer"
                                     className="w-full h-full object-cover absolute inset-0"
                                     onError={e => {
                                       e.target.style.display = 'none';
-                                      e.currentTarget.parentElement.querySelector('.fallback-icon').style.display = 'block';
+                                      const fallback = e.currentTarget.parentElement.querySelector('.fallback-icon');
+                                      if (fallback) fallback.style.display = 'block';
                                     }}
                                   />
                                 )}
@@ -408,12 +416,13 @@ export default function App() {
                       <div className="w-12 h-12 rounded-[6px] overflow-hidden bg-slate-900 border border-white/10 shrink-0 relative">
                         {p.photo_url && (
                           <img
-                            src={p.photo_url}
+                            src={proxyImage(p.photo_url)}
                             referrerPolicy="no-referrer"
                             className="w-full h-full object-cover absolute inset-0"
                             onError={e => {
                               e.target.style.display = 'none';
-                              e.currentTarget.parentElement.querySelector('.fallback-icon').style.display = 'block';
+                              const fallback = e.currentTarget.parentElement.querySelector('.fallback-icon');
+                              if (fallback) fallback.style.display = 'block';
                             }}
                           />
                         )}
@@ -449,13 +458,14 @@ export default function App() {
                 <div className="w-24 h-24 rounded-[6px] mx-auto mb-4 shadow-2xl border-2 border-indigo-500 overflow-hidden bg-slate-900 relative">
                   {selectedPolitician.photo_url && (
                     <img
-                      src={selectedPolitician.photo_url}
+                      src={proxyImage(selectedPolitician.photo_url)}
                       referrerPolicy="no-referrer"
                       className="w-full h-full object-cover absolute inset-0"
                       alt={selectedPolitician.name}
                       onError={e => {
                         e.target.style.display = 'none';
-                        e.currentTarget.parentElement.querySelector('.fallback-icon').style.display = 'block';
+                        const fallback = e.currentTarget.parentElement.querySelector('.fallback-icon');
+                        if (fallback) fallback.style.display = 'block';
                       }}
                     />
                   )}
