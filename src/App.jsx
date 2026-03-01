@@ -20,7 +20,7 @@ const roleLabels = {
 const proxyImage = (url) => {
   if (!url) return null
   if (url.includes('wsrv.nl')) return url
-  return `https://wsrv.nl/?url=${encodeURIComponent(url)}`
+  return `https://wsrv.nl/?url=${encodeURIComponent(url)}&default=identicon`
 }
 
 export default function App() {
@@ -489,10 +489,31 @@ export default function App() {
                 </div>
               </div>
               <h2 className="text-3xl font-black text-white uppercase tracking-tighter mb-1">{selectedPolitician.name}</h2>
-              <div className="flex justify-center gap-2">
+              <div className="flex justify-center gap-2 mb-4">
                 <span className="px-3 py-1 bg-white/5 rounded-[4px] text-[10px] font-black text-slate-400 uppercase tracking-widest border border-white/5">{selectedPolitician.party}</span>
                 <span className="px-3 py-1 bg-white/5 rounded-[4px] text-[10px] font-black text-slate-400 uppercase tracking-widest border border-white/5">{selectedPolitician.role}</span>
               </div>
+
+              {!loadingScandals && (
+                <div className="bg-rose-500/10 border border-rose-500/20 rounded-[6px] p-3 max-w-[280px] mx-auto animate-in zoom-in duration-300">
+                  <p className="text-[9px] font-black text-rose-400 uppercase tracking-widest leading-relaxed">
+                    {(() => {
+                      const text = scandals.map(s => s.title + ' ' + s.caption).join(' ').toLowerCase()
+                      const keywords = ['corrupção', 'desvio', 'escândalo', 'propina', 'fraude']
+                      const found = keywords.filter(k => text.includes(k))
+                      const total = scandals.length + lawsuits.length
+
+                      if (total === 0) return 'Nenhuma menção criminal detectada'
+
+                      if (found.length > 0) {
+                        const wordList = found.map(w => w.toUpperCase()).join(', ')
+                        return `As palavras ${wordList} são mencionadas em ${total} registros`
+                      }
+                      return `Este candidato possui ${total} registros no dossiê`
+                    })()}
+                  </p>
+                </div>
+              )}
             </div>
             <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 bg-black/20 custom-scroll">
               {loadingScandals ? <div className="flex flex-col items-center justify-center p-12 space-y-4">
