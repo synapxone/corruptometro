@@ -308,18 +308,20 @@ export default function App() {
                         <div className="flex-1 min-w-0 min-h-[4rem] flex items-center overflow-hidden">
                           {p ? (
                             <div className="flex items-center w-full gap-2 bg-black/60 border border-white/5 rounded-[6px] p-2 shadow-xl overflow-hidden relative">
-                              {p.photo_url && (
-                                <img
-                                  src={p.photo_url}
-                                  referrerPolicy="no-referrer"
-                                  className="w-full h-full object-cover absolute inset-0"
-                                  onError={e => {
-                                    e.target.style.display = 'none';
-                                    e.currentTarget.parentElement.querySelector('.fallback-icon').style.display = 'block';
-                                  }}
-                                />
-                              )}
-                              <User className="w-full h-full p-2 text-slate-800 absolute inset-0 fallback-icon" style={{ display: p.photo_url ? 'none' : 'block' }} />
+                              <div className="w-9 h-9 sm:w-11 sm:h-11 rounded-[4px] overflow-hidden bg-slate-900 shrink-0 border border-white/10 relative">
+                                {p.photo_url && (
+                                  <img
+                                    src={p.photo_url}
+                                    referrerPolicy="no-referrer"
+                                    className="w-full h-full object-cover absolute inset-0"
+                                    onError={e => {
+                                      e.target.style.display = 'none';
+                                      e.currentTarget.parentElement.querySelector('.fallback-icon').style.display = 'block';
+                                    }}
+                                  />
+                                )}
+                                <User className="w-full h-full p-2 text-slate-800 absolute inset-0 fallback-icon" style={{ display: p.photo_url ? 'none' : 'block' }} />
+                              </div>
                               <div className="flex-1 min-w-0 overflow-hidden">
                                 <div className="text-[11px] font-black text-white truncate uppercase tracking-tight mb-0.5">{p.name}</div>
                                 <div className="flex items-center gap-1 min-w-0 overflow-hidden">
@@ -521,9 +523,9 @@ export default function App() {
                         <a key={i} href={s.news_url} target="_blank" rel="noopener noreferrer" className="block p-5 bg-black/40 border border-white/5 rounded-[6px] hover:border-white/20 hover:bg-black/60 transition-all group">
                           <div className="flex justify-between items-center mb-3">
                             <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-[4px] shadow-lg ${s.severity === 'critical' ? 'bg-rose-600 text-white' :
-                                s.severity === 'high' ? 'bg-rose-400 text-black' :
-                                  s.severity === 'medium' ? 'bg-amber-400 text-black' :
-                                    'bg-slate-600 text-white'
+                              s.severity === 'high' ? 'bg-rose-400 text-black' :
+                                s.severity === 'medium' ? 'bg-amber-400 text-black' :
+                                  'bg-slate-600 text-white'
                               }`}>{
                                 s.severity === 'critical' ? 'CONDENADO' :
                                   s.severity === 'high' ? 'GRAVE' :

@@ -20,8 +20,7 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
 
-// Returns false only if server explicitly returns 404/410.
-// Other errors (timeout, network) = assume OK (server may have CORS restrictions).
+// Verifica se URL existe — detecta hard 404 E soft 404 (redirect para erro).
 async function urlAlive(url: string): Promise<boolean> {
   if (!url || !url.startsWith("http")) return false
   try {
@@ -31,9 +30,44 @@ async function urlAlive(url: string): Promise<boolean> {
       signal: AbortSignal.timeout(8000),
       redirect: "follow",
     })
-    return res.status !== 404 && res.status !== 410 && res.status !== 451
+
+    // Hard 404 / removido / bloqueado legalmente
+    if (res.status === 404 || res.status === 410 || res.status === 451) return false
+
+    // Soft 404: servidor redirecionou para URL completamente diferente
+    // (ex: G1 manda para homepage ou página de busca quando artigo não existe)
+    if (res.redirected && res.url) {
+      try {
+        const orig = new URL(url)
+        const final = new URL(res.url)
+
+        // Redirecionou para domínio diferente = provavelmente soft 404
+        if (final.hostname !== orig.hostname) return false
+
+        // Redirecionou para homepage, busca ou padrões de "não encontrado"
+        const fp = final.pathname.toLowerCase()
+        const softPatterns = [
+          /^\/?$/, /^\/index\.html?$/, /\/404/, /\/not.?found/,
+          /\/nao.?encontrad/, /\/erro/, /\/error/, /\/pagina.?nao/,
+          /\/busca/, /\/search/, /\/tag\//, /\/$/, // redirect to root or tag = 404
+        ]
+        // Só aplica o padrão de "/" se a URL original tinha um path longo
+        const origPathLong = orig.pathname.split("/").length > 3
+        if (softPatterns.some((p, i) => {
+          if (i === 0 && !origPathLong) return false // ignora "/" em URLs curtas
+          return p.test(fp)
+        })) return false
+
+        // URL encurtou drasticamente (ex: /noticia/2025/08/15/artigo → /noticia)
+        const origSegments = orig.pathname.split("/").filter(Boolean).length
+        const finalSegments = final.pathname.split("/").filter(Boolean).length
+        if (origSegments >= 3 && finalSegments <= 1) return false
+      } catch { /* URL parse error — ignora */ }
+    }
+
+    return true
   } catch {
-    return true // network/timeout = assume alive
+    return true // timeout / network = assume alive
   }
 }
 
