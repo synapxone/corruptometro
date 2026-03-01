@@ -592,15 +592,17 @@ export default function App() {
                             {scandals.slice(0, visibleCounts.scandals).map((s, i) => (
                               <a key={i} href={s.news_url} target="_blank" rel="noopener noreferrer" className="block p-5 bg-black/40 border border-white/5 rounded-[6px] hover:border-white/20 hover:bg-black/60 transition-all group">
                                 <div className="flex justify-between items-center mb-3">
-                                  <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-[4px] shadow-lg ${s.severity === 'critical' ? 'bg-rose-600 text-white' :
-                                    s.severity === 'high' ? 'bg-rose-400 text-black' :
-                                      s.severity === 'medium' ? 'bg-amber-400 text-black' :
-                                        'bg-slate-600 text-white'
-                                    }`}>{
+                                  <span className={`text-[9px] font-black uppercase px-2 py-1 rounded-[4px] shadow-lg ${s.is_positive ? 'bg-emerald-600 text-white' :
+                                      s.severity === 'critical' ? 'bg-rose-600 text-white' :
+                                        s.severity === 'high' ? 'bg-rose-400 text-black' :
+                                          s.severity === 'medium' ? 'bg-amber-400 text-black' :
+                                            'bg-slate-600 text-white'
+                                    }`}>
+                                    {s.is_positive ? 'POSITIVO' :
                                       s.severity === 'critical' ? 'CONDENADO' :
                                         s.severity === 'high' ? 'GRAVE' :
-                                          s.severity === 'medium' ? 'MÉDIO' : 'LEVE'
-                                    }</span>
+                                          s.severity === 'medium' ? 'INVESTIGAÇÃO' : 'MENÇÃO'}
+                                  </span>
                                   <div className="flex items-center gap-2">
                                     <span className="text-[10px] text-slate-600 font-bold font-mono">{new Date(s.date_occurrence).toLocaleDateString('pt-BR')}</span>
                                     <ExternalLink size={12} className="text-slate-600 group-hover:text-indigo-400" />
