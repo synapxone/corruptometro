@@ -66,7 +66,7 @@ serve(async (req: Request) => {
           politician_id: politicianId,
           title: `VOTAÇÃO: ${v.proposicaoDescricao || 'Materia Legislativa'}`,
           caption: `Voto: ${v.tipoVoto || 'Não Registrado'} - Data: ${v.dataHoraRegistro.split('T')[0]}`,
-          news_url: `https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao=${v.idVotacao.split('-')[0]}`,
+          news_url: `https://www.camara.leg.br/proposicoesWeb/fichadetramitacao?idProposicao=${v.idVotacao.split('-')[0]}&votoId=${v.idVotacao}`,
           is_positive: true,
           severity: "low",
           date_occurrence: v.dataHoraRegistro.split('T')[0]
@@ -109,12 +109,17 @@ serve(async (req: Request) => {
       }
     }
 
-    const finalResult = [...scandals.filter(s => s.severity !== "ignore"), ...projects, ...votes];
+    const rawFinal = [...scandals.filter(s => s.severity !== "ignore"), ...projects, ...votes];
+
+    // Deduplication internal (same scan)
+    const uniqueMap = new Map();
+    rawFinal.forEach(s => uniqueMap.set(s.news_url, s));
+    const finalResult = Array.from(uniqueMap.values());
 
     if (saveToDb && politicianId && finalResult.length > 0) {
       const { data: ext } = await db.from("scandals").select("news_url").eq("politician_id", politicianId)
       const links = new Set((ext || []).map((s: any) => s.news_url))
-      const uni = finalResult.filter(s => !links.has(s.news_url))
+      const uni = finalResult.filter((s: any) => !links.has(s.news_url))
       if (uni.length > 0) await db.from("scandals").insert(uni)
       log.push(`✓ Sincronizado: ${uni.length} novos registros.`);
     }
