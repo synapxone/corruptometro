@@ -350,10 +350,17 @@ export default function Admin({ onClose }) {
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0 })
 
   const handleSyncAllPhotos = async () => {
-    const toSync = politicians.filter(p => p.photo_url && !p.photo_url.includes('supabase.co'))
-    if (toSync.length === 0) { alert('Todas as fotos já estão sincronizadas localmente.'); return; }
+    // Busca profunda em todos os registros que precisam de sync, sem o limite de 1000 do estado local
+    const { data: toSync, error: polErr } = await supabase
+      .from('politicians')
+      .select('id, name, photo_url')
+      .not('photo_url', 'is', null)
+      .not('photo_url', 'ilike', '%supabase.co%')
 
-    if (!confirm(`Sincronizar ${toSync.length} fotos para o Storage local? Isso resolve problemas de carregamento.`)) return;
+    if (polErr) { alert('Erro ao buscar lista: ' + polErr.message); return; }
+    if (!toSync || toSync.length === 0) { alert('Todas as fotos já estão sincronizadas localmente.'); return; }
+
+    if (!confirm(`Localizamos ${toSync.length} fotos externas. Iniciar download para o Storage local?`)) return;
 
     setSyncingPhotos(true)
     setSyncProgress({ current: 0, total: toSync.length })
